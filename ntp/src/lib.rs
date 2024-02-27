@@ -70,7 +70,7 @@ struct NTPFlags {
 impl Into<u8> for &NTPFlags {
     fn into(self) -> u8 {
         let l: u8 = (&self.l).into();
-        let v: u8 = (&self.v).into();
+        let v: u8 = self.v.0;
         let m: u8 = (&self.m).into();
         ((l & 0b011) << 6) | ((v & 0b111) << 3) | ((m & 0b11) << 0)
     }
@@ -94,15 +94,27 @@ impl Serialize for Reference {
     }
 }
 
-struct VersionNumber {
-    version: u8,
-}
+#[derive(Debug, PartialEq)]
+struct PeerPrecision(i8);
 
-impl Into<VersionNumber> for u8 {
-    fn into(self) -> VersionNumber {
-        VersionNumber { version: self }
+impl From<f32> for PeerPrecision {
+    fn from(f: f32) -> Self {
+        // 1/1024 => -10
+        // 1/513 => -10
+        // 1/512 => -9
+
+        // 2^-30 < 1ns; 2^2 = 4s
+        for i in -30..=2 {
+            let p = 2_f32.powi(i);
+            if p > f {
+                return PeerPrecision(i as i8 - 1);
+            }
+        }
+        // panic?
+        PeerPrecision(127)
     }
 }
+struct VersionNumber(u8);
 
 enum LeapIndicator {
     NoWarning,
@@ -111,11 +123,6 @@ enum LeapIndicator {
     Alarm,
 }
 
-impl Into<u8> for &VersionNumber {
-    fn into(self) -> u8 {
-        self.version & 0b111
-    }
-}
 impl Into<u8> for &Mode {
     fn into(self) -> u8 {
         match self {
@@ -192,12 +199,21 @@ mod tests {
     #[test]
     fn serialize_flags() {
         let flags = NTPFlags {
-            v: 3.into(),
+            v: VersionNumber(3),
             l: LeapIndicator::Alarm,
             m: Mode::SymActive,
         };
         let result: u8 = (&flags).into();
         assert_eq!(result, 0xd9);
+    }
+    #[test]
+    fn test_peer_precision_f32() {
+        assert_eq!(PeerPrecision::from(1.0 / 1025.0).0, -11);
+        assert_eq!(PeerPrecision::from(1.0 / 1024.0).0, -10);
+        assert_eq!(PeerPrecision::from(1.0 / 513.0).0, -10);
+        assert_eq!(PeerPrecision::from(1.0 / 512.0).0, -9);
+        assert_eq!(PeerPrecision::from(1.0 / 511.0).0, -9);
+        assert_eq!(PeerPrecision::from(1.0).0, 0);
     }
 
     #[test]
@@ -211,7 +227,7 @@ mod tests {
         ); // missing nanos?
         let m = NTPMessage {
             flags: NTPFlags {
-                v: 3.into(),
+                v: VersionNumber(3),
                 l: LeapIndicator::NoWarning,
                 m: Mode::SymPassive,
             },
