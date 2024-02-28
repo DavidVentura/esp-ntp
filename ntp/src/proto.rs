@@ -35,6 +35,7 @@ impl From<f32> for Fix32 {
 }
 
 // This is basically Duration
+#[derive(PartialEq, Debug)]
 pub struct NTPTimestamp {
     /// seconds since NTP time zero; 1900-1-1 00:00:00 UTC.
     int_part: u32,
@@ -53,16 +54,19 @@ impl Serialize for NTPTimestamp {
     }
 }
 
+pub fn ntp_zero() -> DateTime<Utc> {
+    DateTime::<Utc>::from_naive_utc_and_offset(
+        NaiveDate::from_ymd_opt(1900, 1, 1)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap(),
+        Utc,
+    )
+}
+
 impl From<DateTime<Utc>> for NTPTimestamp {
     fn from(dt: DateTime<Utc>) -> Self {
-        let ntp_zero = DateTime::<Utc>::from_naive_utc_and_offset(
-            NaiveDate::from_ymd_opt(1900, 1, 1)
-                .unwrap()
-                .and_hms_opt(0, 0, 0)
-                .unwrap(),
-            Utc,
-        );
-        let delta = dt.signed_duration_since(ntp_zero);
+        let delta = dt.signed_duration_since(ntp_zero());
         let s = delta.num_seconds();
         let n = delta.subsec_nanos();
         NTPTimestamp {
@@ -246,6 +250,23 @@ mod tests {
 
         assert_eq!(Fix32 { i: 0, f: 256 * 1 }.serialize(), vec![0, 0, 1, 0]);
         assert_eq!(Fix32 { i: 0, f: 256 * 2 }.serialize(), vec![0, 0, 2, 0]);
+    }
+
+    #[test]
+    fn test_serialize_ref_id() {
+        assert_eq!(Reference::GPS.serialize(), vec![b'G', b'P', b'S', 0]);
+        assert_eq!(
+            Reference::IPv4(Ipv4Addr::new(1, 2, 3, 4)).serialize(),
+            vec![1, 2, 3, 4]
+        );
+    }
+
+    #[test]
+    fn test_serialize_timestamp() {
+        assert_eq!(
+            NTPTimestamp::from(ntp_zero()).serialize(),
+            vec![0, 0, 0, 0, 0, 0, 0, 0]
+        )
     }
 
     #[test]
