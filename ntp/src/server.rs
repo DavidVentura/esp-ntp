@@ -1,5 +1,5 @@
 use crate::proto::*;
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Utc};
 use std::time::Duration;
 pub struct GPSServer {
     reftime: Option<DateTime<Utc>>,
