@@ -5,7 +5,6 @@ pub struct GPSServer {
     reftime: DateTime<Utc>,
 }
 
-const NTP_VERSION: u8 = 3;
 impl GPSServer {
     pub fn new() -> GPSServer {
         let ntp_zero = DateTime::<Utc>::from_naive_utc_and_offset(

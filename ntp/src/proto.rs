@@ -1,8 +1,10 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use std::{net::Ipv4Addr, time::Duration};
 
+pub const NTP_VERSION: u8 = 3;
 const NTP_MESSAGE_LEN: usize = 48;
 
+#[derive(PartialEq, Debug)]
 pub struct Fix32 {
     pub i: u16,
     pub f: u16,
@@ -30,6 +32,21 @@ impl From<f32> for Fix32 {
         Fix32 {
             i: f.trunc() as u16,
             f: f.fract() as u16,
+        }
+    }
+}
+/// Prevision is ~15.2us
+impl From<Duration> for Fix32 {
+    fn from(d: Duration) -> Self {
+        let i = d.as_secs() as u16;
+        // subsec_micros is by definition <= 1_000_000, which is < 2**20
+        // it's safe to << 12, as a u32, which is equivalent to * 4_000_000
+
+        // the output .f goes up by 1 every ~15.2us
+        let micros = d.subsec_micros() * 1_000_000 / 15_258_789;
+        Fix32 {
+            i,
+            f: micros as u16,
         }
     }
 }
@@ -288,6 +305,21 @@ mod tests {
     }
 
     #[test]
+    fn test_fix32_from_duration() {
+        let got = Fix32::from(Duration::from_micros(1526));
+        let expected = Fix32 { i: 0, f: 100 };
+        assert_eq!(expected, got);
+
+        let got = Fix32::from(Duration::from_micros(153));
+        let expected = Fix32 { i: 0, f: 10 };
+        assert_eq!(expected, got);
+
+        let got = Fix32::from(Duration::from_micros(16));
+        let expected = Fix32 { i: 0, f: 1 };
+        assert_eq!(expected, got);
+    }
+
+    #[test]
     fn serialize_root_answer() {
         let ts = DateTime::<Utc>::from_naive_utc_and_offset(
             NaiveDate::from_ymd_opt(2004, 9, 27)
@@ -305,8 +337,8 @@ mod tests {
             peer_stratum: 1,
             peer_polling_interval: 10,
             peer_clock_precision: PeerPrecision::from(Duration::from_micros(15)),
-            root_delay: Fix32::from(0.0), // 0.0,
-            root_dispersion: Fix32::from(0.000320),
+            root_delay: Fix32::from(Duration::from_micros(0)),
+            root_dispersion: Fix32::from(Duration::from_micros(320)),
             ref_id: Reference::GPS,
             ref_tstamp: NTPTimestamp::from(ts),
             origin_tstamp: NTPTimestamp::from(ts),
@@ -322,7 +354,7 @@ mod tests {
                 /* root_delay*/
                 0, 0, 0, 0,
                 /* root_dispersion*/
-                0, 0, 0, 0,
+                0, 0, 0, 0x14,
                 /* ref id*/
                 b'G', b'P', b'S', 0,
                 /* ref tstamp */
