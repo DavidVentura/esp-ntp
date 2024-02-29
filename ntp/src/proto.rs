@@ -20,21 +20,12 @@ impl Serialize for Fix32 {
         ]
     }
 }
-// FIXME
 impl From<Fix32> for f32 {
     fn from(f: Fix32) -> f32 {
-        0.0
+        f32::from(f.i) + f32::from(f.f) / f32::from(u16::MAX)
     }
 }
-// FIXME
-impl From<f32> for Fix32 {
-    fn from(f: f32) -> Fix32 {
-        Fix32 {
-            i: f.trunc() as u16,
-            f: f.fract() as u16,
-        }
-    }
-}
+
 /// Prevision is ~15.2us
 impl From<Duration> for Fix32 {
     fn from(d: Duration) -> Self {
@@ -302,6 +293,21 @@ mod tests {
         assert_eq!(PeerPrecision::from(1.0 / 512.0).0, -9);
         assert_eq!(PeerPrecision::from(1.0 / 511.0).0, -9);
         assert_eq!(PeerPrecision::from(1.0).0, 0);
+    }
+
+    #[test]
+    fn test_fix32_to_float() {
+        let got = f32::from(Fix32::from(Duration::from_micros(1526)));
+        let expected = 0.001526;
+        assert!((expected - got).abs() < 0.000_001);
+
+        let got = f32::from(Fix32::from(Duration::from_micros(153)));
+        let expected = 0.000153;
+        assert!((expected - got).abs() < 0.000_001);
+
+        let got = f32::from(Fix32::from(Duration::from_micros(16)));
+        let expected = 0.000016;
+        assert!((expected - got).abs() < 0.000_001);
     }
 
     #[test]
