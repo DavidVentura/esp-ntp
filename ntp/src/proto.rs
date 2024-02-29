@@ -2,7 +2,7 @@ use chrono::{DateTime, NaiveDate, Utc};
 use std::{net::Ipv4Addr, time::Duration};
 
 pub const NTP_VERSION: u8 = 3;
-const NTP_MESSAGE_LEN: usize = 48;
+pub const NTP_MESSAGE_LEN: usize = 48;
 
 #[derive(PartialEq, Debug)]
 pub struct Fix32 {
@@ -12,12 +12,14 @@ pub struct Fix32 {
 
 impl Serialize for Fix32 {
     fn serialize(&self) -> Vec<u8> {
-        vec![
+        #[rustfmt::skip]
+        let v = vec![
             ((self.i & 0xff00) >> 8) as u8,
-            ((self.i & 0x00ff) >> 0) as u8,
+             (self.i & 0x00ff)       as u8,
             ((self.f & 0xff00) >> 8) as u8,
-            ((self.f & 0x00ff) >> 0) as u8,
-        ]
+             (self.f & 0x00ff)       as u8,
+        ];
+        v
     }
 }
 impl From<Fix32> for f32 {
@@ -51,6 +53,16 @@ pub struct NTPTimestamp {
     frac_part: u32,
 }
 
+impl NTPTimestamp {
+    fn deserialize(buf: &[u8]) -> NTPTimestamp {
+        let int_part = u32::from_be_bytes(buf[0..4].try_into().unwrap());
+        let frac_part = u32::from_be_bytes(buf[4..8].try_into().unwrap());
+        NTPTimestamp {
+            int_part,
+            frac_part,
+        }
+    }
+}
 impl Serialize for NTPTimestamp {
     fn serialize(&self) -> Vec<u8> {
         let i = self.int_part.to_be_bytes();
@@ -89,12 +101,14 @@ pub struct NTPFlags {
     pub v: VersionNumber,
     pub m: Mode,
 }
-impl Into<u8> for &NTPFlags {
-    fn into(self) -> u8 {
-        let l: u8 = (&self.l).into();
-        let v: u8 = self.v.0;
-        let m: u8 = (&self.m).into();
-        ((l & 0b011) << 6) | ((v & 0b111) << 3) | ((m & 0b11) << 0)
+
+impl From<&NTPFlags> for u8 {
+    fn from(n: &NTPFlags) -> u8 {
+        let l: u8 = (&n.l).into();
+        let v: u8 = n.v.0;
+        let m: u8 = (&n.m).into();
+
+        ((l & 0b011) << 6) | ((v & 0b111) << 3) | (m & 0b111)
     }
 }
 
@@ -146,9 +160,9 @@ impl From<f32> for PeerPrecision {
     }
 }
 
-impl Into<u8> for PeerPrecision {
-    fn into(self) -> u8 {
-        self.0 as u8
+impl From<&PeerPrecision> for u8 {
+    fn from(p: &PeerPrecision) -> u8 {
+        p.0 as u8
     }
 }
 pub struct VersionNumber(pub u8);
@@ -160,9 +174,9 @@ pub enum LeapIndicator {
     Alarm,
 }
 
-impl Into<u8> for &Mode {
-    fn into(self) -> u8 {
-        match self {
+impl From<&Mode> for u8 {
+    fn from(m: &Mode) -> u8 {
+        match m {
             Mode::Unspecified => 0,
             Mode::SymActive => 1,
             Mode::SymPassive => 2,
@@ -174,9 +188,9 @@ impl Into<u8> for &Mode {
         }
     }
 }
-impl Into<u8> for &LeapIndicator {
-    fn into(self) -> u8 {
-        match self {
+impl From<&LeapIndicator> for u8 {
+    fn from(l: &LeapIndicator) -> u8 {
+        match l {
             LeapIndicator::NoWarning => 0b00,
             LeapIndicator::LastMinuteHas61Seconds => 0b01,
             LeapIndicator::LastMinuteHas59Seconds => 0b10,
@@ -210,6 +224,22 @@ pub struct NTPMessage {
     pub rcv_tstamp: NTPTimestamp,
     pub transmit_tstamp: NTPTimestamp,
 }
+pub struct NTPQuery {
+    pub peer_polling_interval: u8,
+    pub transmit_tstamp: NTPTimestamp,
+}
+
+impl NTPQuery {
+    pub fn deserialize(buf: &[u8]) -> Option<NTPQuery> {
+        if buf.len() != NTP_MESSAGE_LEN {
+            return None;
+        }
+        Some(NTPQuery {
+            peer_polling_interval: buf[2],
+            transmit_tstamp: NTPTimestamp::deserialize(&buf[40..48]),
+        })
+    }
+}
 
 impl NTPMessage {
     pub fn serialize(&self) -> Vec<u8> {
@@ -217,7 +247,7 @@ impl NTPMessage {
         message.push((&self.flags).into());
         message.push(self.peer_stratum);
         message.push(self.peer_polling_interval);
-        message.push(self.peer_clock_precision.into());
+        message.push(u8::from(&self.peer_clock_precision));
         message.extend(self.root_delay.serialize());
         message.extend(self.root_dispersion.serialize());
         message.extend(self.ref_id.serialize());
