@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use chrono::{DateTime, NaiveDate, TimeDelta, Utc};
 
 #[derive(Debug)]
@@ -219,8 +221,11 @@ impl Packet {
         Packet::from_iter(&mut buf.into_iter().copied())
     }
 
+    fn len_with_frame(&self) -> usize {
+        self.payload.len() + Self::MIN_PKT_LEN
+    }
     pub fn serialize(&self) -> Vec<u8> {
-        let mut v = Vec::with_capacity(self.payload.len() + Self::MIN_PKT_LEN);
+        let mut v = Vec::with_capacity(self.len_with_frame());
         v.push(Self::SYNC_CHAR_1);
         v.push(Self::SYNC_CHAR_2);
         v.push(u8::from(self.class));
@@ -254,7 +259,7 @@ impl Packet {
         );
 
         let payload_len = u16::from_le_bytes([l1, l2]);
-        let mut b = Vec::with_capacity(Self::MIN_PKT_LEN + payload_len as usize);
+        let mut b = Vec::with_capacity(payload_len as usize + Packet::MIN_PKT_LEN);
         b.push(s1);
         b.push(s2);
         b.push(class);
@@ -294,6 +299,47 @@ fn checksum(buf: &[u8]) -> (u8, u8) {
     (ck_a, ck_b)
 }
 
+pub struct PacketIterator<I: Iterator<Item = u8>> {
+    stream: I,
+    buf: VecDeque<u8>,
+}
+
+impl<I: Iterator<Item = u8>> PacketIterator<I> {
+    pub fn new(i: I) -> PacketIterator<I>
+    where
+        I: Iterator<Item = u8>,
+    {
+        let b = VecDeque::with_capacity(128);
+        PacketIterator { stream: i, buf: b }
+    }
+}
+impl<I: Iterator<Item = u8>> Iterator for PacketIterator<I> {
+    type Item = Packet;
+    fn next(&mut self) -> Option<Packet> {
+        loop {
+            if self.buf.len() == 0 {
+                self.buf.push_back(self.stream.next()?);
+            }
+            let r = Packet::from_iter(&mut self.buf.iter().copied());
+            match r {
+                Err(BadDeserialization::BadChecksum) => {
+                    self.buf.pop_front();
+                }
+                Err(BadDeserialization::BadMagic) => {
+                    self.buf.pop_front();
+                }
+                Err(BadDeserialization::IncompleteRead) => {
+                    self.buf.push_back(self.stream.next()?);
+                    continue;
+                }
+                Ok(p) => {
+                    drop(self.buf.drain(..(p.len_with_frame())));
+                    return Some(p);
+                }
+            }
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -358,5 +404,44 @@ mod tests {
         let p = Packet::from_iter(&mut buf.into_iter()).unwrap();
         assert_eq!(p.class, Class::Navigation);
         assert_eq!(p.id, 0x20);
+    }
+
+    #[test]
+    fn from_iterator_many() {
+        let buf = vec![
+            0xb5, 0x62, 0x01, 0x20, 0x10, 0x00, 0xce, 0x74, 0x3e, 0x04, 0x88, 0xcc, 0xfa, 0xff,
+            0x81, 0x07, 0x11, 0x07, 0x2c, 0x33, 0x31, 0x01, 0x33, 0x25, 0xb5, 0x62, 0x01, 0x20,
+            0x10, 0x00, 0xce, 0x74, 0x3e, 0x04, 0x88, 0xcc, 0xfa, 0xff, 0x81, 0x07, 0x11, 0x07,
+            0x2c, 0x33, 0x31, 0x01, 0x33, 0x25,
+        ];
+        let mut _iter = buf.into_iter();
+        let iter = PacketIterator::new(&mut _iter);
+        let mut count = 0;
+        for p in iter {
+            assert_eq!(p.class, Class::Navigation);
+            assert_eq!(p.id, 0x20);
+            count += 1;
+        }
+        assert_eq!(count, 2);
+    }
+    #[test]
+    fn from_iterator_leading_garbage() {
+        let buf = vec![
+            0xaa, 0xaa, 0xbb, /* <-- 3 'noise' elements */
+            0xb5, 0x62, 0x01, 0x20, 0x10, 0x00, 0xce, 0x74, 0x3e, 0x04, 0x88, 0xcc, 0xfa, 0xff,
+            0x81, 0x07, 0x11, 0x07, 0x2c, 0x33, 0x31, 0x01, 0x33, 0x25, 0xff,
+            /* <-- also 1 garbage here */ 0xb5, 0x62, 0x01, 0x20, 0x10, 0x00, 0xce, 0x74,
+            0x3e, 0x04, 0x88, 0xcc, 0xfa, 0xff, 0x81, 0x07, 0x11, 0x07, 0x2c, 0x33, 0x31, 0x01,
+            0x33, 0x25,
+        ];
+        let mut _iter = buf.into_iter();
+        let iter = PacketIterator::new(&mut _iter);
+        let mut count = 0;
+        for p in iter {
+            assert_eq!(p.class, Class::Navigation);
+            assert_eq!(p.id, 0x20);
+            count += 1;
+        }
+        assert_eq!(count, 2);
     }
 }
