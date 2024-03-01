@@ -16,7 +16,6 @@ impl<'d> Ublox<'d> {
         uart: impl Peripheral<P = UART> + 'd,
         tx: impl Peripheral<P = impl OutputPin> + 'd,
         rx: impl Peripheral<P = impl InputPin> + 'd,
-        //rx: AnyInputPin,
     ) -> Ublox<'d> {
         let u = UartDriver::new(
             uart,
@@ -38,41 +37,23 @@ impl<'d> Ublox<'d> {
     }
 }
 
-/*
-impl<'a> Iterator for Ublox<'a> {
-    type Item = u8;
-    fn next(&mut self) -> Option<u8> {
-        // TODO
-        self.u.u.read();
-    }
-}
-*/
-
 pub struct UbloxIterator<'a> {
     buf: VecDeque<u8>,
     u: &'a Ublox<'a>,
 }
 
 impl<'a> Iterator for UbloxIterator<'a> {
-    type Item = Packet;
-    fn next(&mut self) -> Option<Packet> {
-        loop {
-            let remaining = self.u.u.remaining_read().unwrap();
-            let mut buf = vec![0 as u8; remaining];
-            self.u.u.read(buf.as_mut_slice(), 1).unwrap();
+    type Item = u8;
+    fn next(&mut self) -> Option<u8> {
+        let remaining = self.u.u.remaining_read().unwrap();
+        let mut buf = vec![0 as u8; remaining];
+        self.u.u.read(buf.as_mut_slice(), 1).unwrap();
+        self.buf.extend(&buf);
+
+        if self.buf.len() == 0 {
+            self.u.u.read(buf.as_mut_slice(), u32::MAX).unwrap();
             self.buf.extend(&buf);
-            match Packet::from_iter(&mut self.buf.iter().copied()) {
-                Err(BadDeserialization::BadChecksum) => {
-                    self.buf.pop_front();
-                }
-                Err(BadDeserialization::BadMagic) => {
-                    self.buf.pop_front();
-                }
-                Err(BadDeserialization::IncompleteRead) => continue,
-                Ok(p) => {
-                    return Some(p);
-                }
-            }
         }
+        self.buf.pop_front()
     }
 }

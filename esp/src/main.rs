@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 mod uart;
-use ubx::proto::{NavPacket, ParsedPacket};
+use ubx::proto::{NavPacket, PacketIterator, ParsedPacket};
 
 fn main() -> std::io::Result<()> {
     esp_idf_svc::sys::link_patches();
@@ -24,7 +24,8 @@ fn main() -> std::io::Result<()> {
 
     let u = uart::Ublox::new(peripherals.uart1, tx, rx);
     loop {
-        for packet in u.into_iter() {
+        let byte_iter = u.into_iter();
+        for packet in PacketIterator::new(byte_iter) {
             let pp = ParsedPacket::from(packet);
             match pp {
                 ParsedPacket::Navigation(n) => match n {
