@@ -83,7 +83,7 @@ impl From<u8> for Class {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Valid {
     pub time_of_week: bool,
     pub week_num: bool,
@@ -99,7 +99,7 @@ impl From<u8> for Valid {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct TimeGPS {
     pub milli: u32,
     /// -500k .. 500k
@@ -145,8 +145,7 @@ impl From<TimeGPS> for DateTime<Utc> {
         let d = d + TimeDelta::nanoseconds(t.nanos as i64);
 
         // this converts GPS time to UTC time
-        // is this supposed to be + or -
-        let d = d + TimeDelta::seconds(t.leap_sec as i64);
+        let d = d - TimeDelta::seconds(t.leap_sec as i64);
         d
     }
 }
@@ -270,7 +269,7 @@ fn checksum(buf: &[u8]) -> (u8, u8) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    use chrono::{Datelike, Timelike};
     #[test]
     fn test_checksum() {
         let buf = vec![
@@ -299,15 +298,22 @@ mod tests {
             0x81, 0x07, 0x11, 0x07, 0x2c, 0x33, 0x31, 0x01, 0x33, 0x25,
         ];
         let p = Packet::deserialize(&buf).unwrap();
-        println!("{:?}", p);
         let pp = ParsedPacket::from(p);
-        println!("{:?}", pp);
         match pp {
             ParsedPacket::Navigation(n) => match n {
                 NavPacket::TimeGPS(t) => {
-                    println!("valid? {:?}", t.valid_flags);
-                    println!("GPS {:?}", DateTime::<Utc>::from(t));
-                    // 2016-10-30T19:46:58.997659144Z
+                    // converted from gps week + gps seconds of week with
+                    // https://www.labsat.co.uk/index.php/en/gps-time-calculator
+                    // 2016-10-30T19:46:24.997659144Z
+                    let dt = DateTime::<Utc>::from(t);
+                    assert_eq!(dt.year(), 2016);
+                    assert_eq!(dt.month(), 10);
+                    assert_eq!(dt.day(), 30);
+                    assert_eq!(dt.hour(), 19);
+                    assert_eq!(dt.minute(), 46);
+                    assert_eq!(dt.second(), 24);
+                    assert_eq!(dt.nanosecond(), 997659144);
+                    assert_eq!(t.accuracy, 20001580);
                 }
                 NavPacket::TimeUTC(t) => {
                     println!("UTC {:?}", DateTime::<Utc>::from(t));
