@@ -20,7 +20,7 @@ impl TimeGPS {
         let p = Packet {
             class: Class::Navigation,
             id: 0x20,
-            payload: &vec![],
+            payload: &[],
         };
         p.serialize()
     }
@@ -117,7 +117,7 @@ fn buf_to_4u8(buf: &[u8]) -> [u8; 4] {
     [buf[0], buf[1], buf[2], buf[3]]
 }
 
-impl<'a> From<&[u8]> for TimeGPS {
+impl From<&[u8]> for TimeGPS {
     fn from(buf: &[u8]) -> TimeGPS {
         TimeGPS {
             milli: u32::from_le_bytes(buf_to_4u8(buf)),
@@ -145,12 +145,11 @@ impl From<TimeGPS> for DateTime<Utc> {
         let d = d + TimeDelta::nanoseconds(t.nanos as i64);
 
         // this converts GPS time to UTC time
-        let d = d - TimeDelta::seconds(t.leap_sec as i64);
-        d
+        d - TimeDelta::seconds(t.leap_sec as i64)
     }
 }
 
-impl<'a> From<&[u8]> for TimeUTC {
+impl From<&[u8]> for TimeUTC {
     fn from(buf: &[u8]) -> TimeUTC {
         TimeUTC {
             weeks_milli: u32::from_le_bytes(buf_to_4u8(buf)),
