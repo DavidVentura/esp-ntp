@@ -14,6 +14,18 @@ impl<'a> From<Packet<'a>> for NavPacket {
         }
     }
 }
+
+impl TimeGPS {
+    pub fn serialize_request(&self) -> Vec<u8> {
+        let p = Packet {
+            class: Class::Navigation,
+            id: 0x20,
+            payload: &vec![],
+        };
+        p.serialize()
+    }
+}
+
 #[derive(Debug)]
 pub enum ParsedPacket {
     Navigation(NavPacket),
@@ -28,7 +40,7 @@ impl<'a> From<Packet<'a>> for ParsedPacket {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum Class {
     Navigation,
     ReceiverManager,
@@ -38,6 +50,21 @@ pub enum Class {
     Monitoring,
     AssistNowAid,
     Timing,
+}
+
+impl From<Class> for u8 {
+    fn from(c: Class) -> u8 {
+        match c {
+            Class::Navigation => 0x1,
+            Class::ReceiverManager => 0x2,
+            Class::Information => 0x4,
+            Class::AckNack => 0x5,
+            Class::ConfigInput => 0x6,
+            Class::Monitoring => 0xA,
+            Class::AssistNowAid => 0xB,
+            Class::Timing => 0xD,
+        }
+    }
 }
 
 impl From<u8> for Class {
@@ -104,6 +131,7 @@ impl<'a> From<&[u8]> for TimeGPS {
 }
 impl From<TimeGPS> for DateTime<Utc> {
     fn from(t: TimeGPS) -> DateTime<Utc> {
+        // https://www.gps.gov/technical/icwg/IS-GPS-200G.pdf, page 39
         let d = DateTime::<Utc>::from_naive_utc_and_offset(
             NaiveDate::from_ymd_opt(1980, 1, 6)
                 .unwrap()
@@ -113,13 +141,16 @@ impl From<TimeGPS> for DateTime<Utc> {
         );
 
         let d = d + TimeDelta::weeks(t.week as i64);
-        // is this supposed to be + or -
-        let d = d + TimeDelta::seconds(t.leap_sec as i64);
         let d = d + TimeDelta::milliseconds(t.milli as i64);
         let d = d + TimeDelta::nanoseconds(t.nanos as i64);
+
+        // this converts GPS time to UTC time
+        // is this supposed to be + or -
+        let d = d + TimeDelta::seconds(t.leap_sec as i64);
         d
     }
 }
+
 impl<'a> From<&[u8]> for TimeUTC {
     fn from(buf: &[u8]) -> TimeUTC {
         TimeUTC {
@@ -169,10 +200,7 @@ impl From<TimeUTC> for DateTime<Utc> {
 pub struct Packet<'a> {
     pub class: Class,
     pub id: u8,
-    pub payload_len: u16,
     pub payload: &'a [u8],
-    pub ck_a: u8,
-    pub ck_b: u8,
 }
 
 impl<'a> Packet<'a> {
@@ -195,7 +223,7 @@ impl<'a> Packet<'a> {
         if buf.len() != (len as usize + Self::MIN_PKT_LEN) {
             return None;
         }
-        let payload = &buf[6..buf.len() - 1];
+        let payload = &buf[6..buf.len() - 2];
         let ck_a = buf[buf.len() - 2];
         let ck_b = buf[buf.len() - 1];
 
@@ -209,11 +237,22 @@ impl<'a> Packet<'a> {
         Some(Packet {
             class: Class::from(class),
             id,
-            payload_len: len,
             payload,
-            ck_a,
-            ck_b,
         })
+    }
+
+    pub fn serialize(&self) -> Vec<u8> {
+        let mut v = Vec::with_capacity(self.payload.len() + Self::MIN_PKT_LEN);
+        v.push(Self::SYNC_CHAR_1);
+        v.push(Self::SYNC_CHAR_2);
+        v.push(u8::from(self.class));
+        v.push(self.id);
+        v.extend((self.payload.len() as u16).to_le_bytes());
+        v.extend(self.payload);
+        let (ck_a, ck_b) = checksum(&v[2..]);
+        v.push(ck_a);
+        v.push(ck_b);
+        v
     }
 }
 
@@ -233,20 +272,40 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_checksum() {
+        let buf = vec![
+            0xb5, 0x62, 0x01, 0x20, 0x10, 0x00, 0xce, 0x74, 0x3e, 0x04, 0x88, 0xcc, 0xfa, 0xff,
+            0x81, 0x07, 0x11, 0x07, 0x2c, 0x33, 0x31, 0x01, 0x33, 0x25,
+        ];
+
+        let (ck_a, ck_b) = checksum(&buf[2..buf.len() - 2]);
+        assert_eq!(ck_a, 0x33);
+        assert_eq!(ck_b, 0x25);
+    }
+    #[test]
+    fn test_roundtrip() {
+        let inbuf = vec![
+            0xb5, 0x62, 0x01, 0x20, 0x10, 0x00, 0xce, 0x74, 0x3e, 0x04, 0x88, 0xcc, 0xfa, 0xff,
+            0x81, 0x07, 0x11, 0x07, 0x2c, 0x33, 0x31, 0x01, 0x33, 0x25,
+        ];
+        let p = Packet::deserialize(&inbuf).unwrap();
+        let outbuf = p.serialize();
+        assert_eq!(inbuf, outbuf);
+    }
+    #[test]
     fn parse_gps_packet() {
         let buf = vec![
             0xb5, 0x62, 0x01, 0x20, 0x10, 0x00, 0xce, 0x74, 0x3e, 0x04, 0x88, 0xcc, 0xfa, 0xff,
             0x81, 0x07, 0x11, 0x07, 0x2c, 0x33, 0x31, 0x01, 0x33, 0x25,
         ];
         let p = Packet::deserialize(&buf).unwrap();
-        assert_eq!(p.ck_a, 51);
-        assert_eq!(p.ck_b, 37);
         println!("{:?}", p);
         let pp = ParsedPacket::from(p);
         println!("{:?}", pp);
         match pp {
             ParsedPacket::Navigation(n) => match n {
                 NavPacket::TimeGPS(t) => {
+                    println!("valid? {:?}", t.valid_flags);
                     println!("GPS {:?}", DateTime::<Utc>::from(t));
                     // 2016-10-30T19:46:58.997659144Z
                 }
