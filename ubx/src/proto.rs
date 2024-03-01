@@ -5,11 +5,11 @@ pub enum NavPacket {
     TimeUTC(TimeUTC),
     TimeGPS(TimeGPS),
 }
-impl<'a> From<Packet<'a>> for NavPacket {
+impl From<Packet> for NavPacket {
     fn from(p: Packet) -> NavPacket {
         match p.id {
-            0x20 => NavPacket::TimeGPS(TimeGPS::from(p.payload)),
-            0x21 => NavPacket::TimeUTC(TimeUTC::from(p.payload)),
+            0x20 => NavPacket::TimeGPS(TimeGPS::from(p.payload.as_slice())),
+            0x21 => NavPacket::TimeUTC(TimeUTC::from(p.payload.as_slice())),
             _ => panic!("idk how to handle id {}", p.id),
         }
     }
@@ -20,7 +20,7 @@ impl TimeGPS {
         let p = Packet {
             class: Class::Navigation,
             id: 0x20,
-            payload: &[],
+            payload: vec![],
         };
         p.serialize()
     }
@@ -31,7 +31,7 @@ pub enum ParsedPacket {
     Navigation(NavPacket),
 }
 
-impl<'a> From<Packet<'a>> for ParsedPacket {
+impl From<Packet> for ParsedPacket {
     fn from(p: Packet) -> ParsedPacket {
         match p.class {
             Class::Navigation => ParsedPacket::Navigation(NavPacket::from(p)),
@@ -40,7 +40,7 @@ impl<'a> From<Packet<'a>> for ParsedPacket {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Class {
     Navigation,
     ReceiverManager,
@@ -129,8 +129,11 @@ impl From<&[u8]> for TimeGPS {
         }
     }
 }
-impl From<TimeGPS> for DateTime<Utc> {
-    fn from(t: TimeGPS) -> DateTime<Utc> {
+impl From<TimeGPS> for Option<DateTime<Utc>> {
+    fn from(t: TimeGPS) -> Option<DateTime<Utc>> {
+        if t.accuracy > 30 {
+            return None;
+        }
         // https://www.gps.gov/technical/icwg/IS-GPS-200G.pdf, page 39
         let d = DateTime::<Utc>::from_naive_utc_and_offset(
             NaiveDate::from_ymd_opt(1980, 1, 6)
@@ -145,7 +148,7 @@ impl From<TimeGPS> for DateTime<Utc> {
         let d = d + TimeDelta::nanoseconds(t.nanos as i64);
 
         // this converts GPS time to UTC time
-        d - TimeDelta::seconds(t.leap_sec as i64)
+        Some(d - TimeDelta::seconds(t.leap_sec as i64))
     }
 }
 
@@ -195,48 +198,25 @@ impl From<TimeUTC> for DateTime<Utc> {
 }
 
 #[derive(Debug)]
-pub struct Packet<'a> {
+pub struct Packet {
     pub class: Class,
     pub id: u8,
-    pub payload: &'a [u8],
+    pub payload: Vec<u8>,
 }
 
-impl<'a> Packet<'a> {
+#[derive(Debug)]
+pub enum BadDeserialization {
+    IncompleteRead,
+    BadChecksum,
+    BadMagic,
+}
+
+impl Packet {
     const SYNC_CHAR_1: u8 = 0xb5;
     const SYNC_CHAR_2: u8 = 0x62;
     const MIN_PKT_LEN: usize = 8; // with 0 data len
-    pub fn deserialize(buf: &[u8]) -> Option<Packet> {
-        if buf.len() < Self::MIN_PKT_LEN {
-            return None;
-        }
-        if buf[0] != Self::SYNC_CHAR_1 {
-            return None;
-        }
-        if buf[1] != Self::SYNC_CHAR_2 {
-            return None;
-        }
-        let class = buf[2];
-        let id = buf[3];
-        let len = u16::from_le_bytes([buf[4], buf[5]]);
-        if buf.len() != (len as usize + Self::MIN_PKT_LEN) {
-            return None;
-        }
-        let payload = &buf[6..buf.len() - 2];
-        let ck_a = buf[buf.len() - 2];
-        let ck_b = buf[buf.len() - 1];
-
-        let (exp_ck_a, exp_ck_b) = checksum(&buf[2..buf.len() - 2]);
-        if ck_a != exp_ck_a {
-            return None;
-        }
-        if ck_b != exp_ck_b {
-            return None;
-        }
-        Some(Packet {
-            class: Class::from(class),
-            id,
-            payload,
-        })
+    pub fn deserialize(buf: &[u8]) -> Result<Packet, BadDeserialization> {
+        Packet::from_iter(&mut buf.into_iter().copied())
     }
 
     pub fn serialize(&self) -> Vec<u8> {
@@ -246,11 +226,60 @@ impl<'a> Packet<'a> {
         v.push(u8::from(self.class));
         v.push(self.id);
         v.extend((self.payload.len() as u16).to_le_bytes());
-        v.extend(self.payload);
+        v.extend(&self.payload);
         let (ck_a, ck_b) = checksum(&v[2..]);
         v.push(ck_a);
         v.push(ck_b);
         v
+    }
+    pub fn from_iter<I>(iter: &mut I) -> Result<Packet, BadDeserialization>
+    where
+        I: Iterator<Item = u8>,
+    {
+        let s1 = iter.next().ok_or(BadDeserialization::IncompleteRead)?;
+        if s1 != Self::SYNC_CHAR_1 {
+            return Err(BadDeserialization::BadMagic);
+        }
+
+        let s2 = iter.next().ok_or(BadDeserialization::IncompleteRead)?;
+        if s2 != Self::SYNC_CHAR_2 {
+            return Err(BadDeserialization::BadMagic);
+        }
+
+        let class = iter.next().ok_or(BadDeserialization::IncompleteRead)?;
+        let id = iter.next().ok_or(BadDeserialization::IncompleteRead)?;
+        let (l1, l2) = (
+            iter.next().ok_or(BadDeserialization::IncompleteRead)?,
+            iter.next().ok_or(BadDeserialization::IncompleteRead)?,
+        );
+
+        let payload_len = u16::from_le_bytes([l1, l2]);
+        let mut b = Vec::with_capacity(Self::MIN_PKT_LEN + payload_len as usize);
+        b.push(s1);
+        b.push(s2);
+        b.push(class);
+        b.push(id);
+        b.push(l1);
+        b.push(l2);
+        for _ in 0..(payload_len) {
+            b.push(iter.next().ok_or(BadDeserialization::IncompleteRead)?);
+        }
+
+        let ck_a = iter.next().ok_or(BadDeserialization::IncompleteRead)?;
+        let ck_b = iter.next().ok_or(BadDeserialization::IncompleteRead)?;
+
+        let (exp_ck_a, exp_ck_b) = checksum(&b[2..b.len()]);
+        if ck_a != exp_ck_a {
+            return Err(BadDeserialization::BadChecksum);
+        }
+        if ck_b != exp_ck_b {
+            return Err(BadDeserialization::BadChecksum);
+        }
+        Ok(Packet {
+            class: Class::from(class),
+            id,
+            payload: b[6..b.len()].into(),
+        })
     }
 }
 
@@ -294,17 +323,18 @@ mod tests {
     fn parse_gps_packet() {
         let buf = vec![
             0xb5, 0x62, 0x01, 0x20, 0x10, 0x00, 0xce, 0x74, 0x3e, 0x04, 0x88, 0xcc, 0xfa, 0xff,
-            0x81, 0x07, 0x11, 0x07, 0x2c, 0x33, 0x31, 0x01, 0x33, 0x25,
+            0x81, 0x07, 0x11, 0x07, 0x1, 0x00, 0x00, 0x00, 163, 125,
         ];
         let p = Packet::deserialize(&buf).unwrap();
         let pp = ParsedPacket::from(p);
         match pp {
             ParsedPacket::Navigation(n) => match n {
                 NavPacket::TimeGPS(t) => {
+                    assert_eq!(t.accuracy, 1);
                     // converted from gps week + gps seconds of week with
                     // https://www.labsat.co.uk/index.php/en/gps-time-calculator
                     // 2016-10-30T19:46:24.997659144Z
-                    let dt = DateTime::<Utc>::from(t);
+                    let dt = Option::<DateTime<Utc>>::from(t).unwrap();
                     assert_eq!(dt.year(), 2016);
                     assert_eq!(dt.month(), 10);
                     assert_eq!(dt.day(), 30);
@@ -312,12 +342,21 @@ mod tests {
                     assert_eq!(dt.minute(), 46);
                     assert_eq!(dt.second(), 24);
                     assert_eq!(dt.nanosecond(), 997659144);
-                    assert_eq!(t.accuracy, 20001580);
                 }
                 NavPacket::TimeUTC(t) => {
                     println!("UTC {:?}", DateTime::<Utc>::from(t));
                 }
             },
         }
+    }
+    #[test]
+    fn from_iterator() {
+        let buf = vec![
+            0xb5, 0x62, 0x01, 0x20, 0x10, 0x00, 0xce, 0x74, 0x3e, 0x04, 0x88, 0xcc, 0xfa, 0xff,
+            0x81, 0x07, 0x11, 0x07, 0x2c, 0x33, 0x31, 0x01, 0x33, 0x25,
+        ];
+        let p = Packet::from_iter(&mut buf.into_iter()).unwrap();
+        assert_eq!(p.class, Class::Navigation);
+        assert_eq!(p.id, 0x20);
     }
 }
