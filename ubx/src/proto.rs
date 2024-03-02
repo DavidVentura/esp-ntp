@@ -52,13 +52,15 @@ pub enum Class {
     Monitoring,
     AssistNowAid,
     Timing,
+    Reserved3,
 }
 
 impl From<Class> for u8 {
-    fn from(c: Class) -> u8 {
+    fn from(c: Class) -> Self {
         match c {
             Class::Navigation => 0x1,
             Class::ReceiverManager => 0x2,
+            Class::Reserved3 => 0x3,
             Class::Information => 0x4,
             Class::AckNack => 0x5,
             Class::ConfigInput => 0x6,
@@ -69,18 +71,20 @@ impl From<Class> for u8 {
     }
 }
 
-impl From<u8> for Class {
-    fn from(u: u8) -> Class {
+impl TryFrom<u8> for Class {
+    type Error = ();
+    fn try_from(u: u8) -> Result<Self, ()> {
         match u {
-            0x1 => Class::Navigation,
-            0x2 => Class::ReceiverManager,
-            0x4 => Class::Information,
-            0x5 => Class::AckNack,
-            0x6 => Class::ConfigInput,
-            0xA => Class::Monitoring,
-            0xB => Class::AssistNowAid,
-            0xD => Class::Timing,
-            other => panic!("Illegal class: {other}"),
+            0x1 => Ok(Class::Navigation),
+            0x2 => Ok(Class::ReceiverManager),
+            0x3 => Ok(Class::Reserved3),
+            0x4 => Ok(Class::Information),
+            0x5 => Ok(Class::AckNack),
+            0x6 => Ok(Class::ConfigInput),
+            0xA => Ok(Class::Monitoring),
+            0xB => Ok(Class::AssistNowAid),
+            0xD => Ok(Class::Timing),
+            _ => Err(()),
         }
     }
 }
@@ -211,6 +215,7 @@ pub enum BadDeserialization {
     IncompleteRead,
     BadChecksum,
     BadMagic,
+    Unsupported(u8),
 }
 
 impl Packet {
@@ -251,7 +256,7 @@ impl Packet {
             return Err(BadDeserialization::BadMagic);
         }
 
-        let class = iter.next().ok_or(BadDeserialization::IncompleteRead)?;
+        let class_u8 = iter.next().ok_or(BadDeserialization::IncompleteRead)?;
         let id = iter.next().ok_or(BadDeserialization::IncompleteRead)?;
         let (l1, l2) = (
             iter.next().ok_or(BadDeserialization::IncompleteRead)?,
@@ -262,7 +267,7 @@ impl Packet {
         let mut b = Vec::with_capacity(payload_len as usize + Packet::MIN_PKT_LEN);
         b.push(s1);
         b.push(s2);
-        b.push(class);
+        b.push(class_u8);
         b.push(id);
         b.push(l1);
         b.push(l2);
@@ -280,8 +285,11 @@ impl Packet {
         if ck_b != exp_ck_b {
             return Err(BadDeserialization::BadChecksum);
         }
+
+        let class =
+            Class::try_from(class_u8).map_err(|_| BadDeserialization::Unsupported(class_u8))?;
         Ok(Packet {
-            class: Class::from(class),
+            class,
             id,
             payload: b[6..b.len()].into(),
         })
@@ -329,8 +337,17 @@ impl<I: Iterator<Item = u8>> Iterator for PacketIterator<I> {
                     self.buf.pop_front();
                 }
                 Err(BadDeserialization::IncompleteRead) => {
-                    self.buf.push_back(self.stream.next()?);
-                    continue;
+                    // this should probably be just `take`
+                    for _ in 0..64 {
+                        match self.stream.next() {
+                            Some(u) => self.buf.push_back(u),
+                            None => break,
+                        }
+                    }
+                }
+                Err(BadDeserialization::Unsupported(class)) => {
+                    self.buf.pop_front();
+                    println!("Eeek! {}", class);
                 }
                 Ok(p) => {
                     drop(self.buf.drain(..(p.len_with_frame())));
