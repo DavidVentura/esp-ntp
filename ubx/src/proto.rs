@@ -309,6 +309,7 @@ fn checksum(buf: &[u8]) -> (u8, u8) {
 
 pub struct PacketIterator<I: Iterator<Item = u8>> {
     stream: I,
+    consecutive_inc: u8,
     buf: VecDeque<u8>,
 }
 
@@ -318,7 +319,11 @@ impl<I: Iterator<Item = u8>> PacketIterator<I> {
         I: Iterator<Item = u8>,
     {
         let b = VecDeque::with_capacity(128);
-        PacketIterator { stream: i, buf: b }
+        PacketIterator {
+            stream: i,
+            buf: b,
+            consecutive_inc: 0,
+        }
     }
 }
 impl<I: Iterator<Item = u8>> Iterator for PacketIterator<I> {
@@ -331,25 +336,39 @@ impl<I: Iterator<Item = u8>> Iterator for PacketIterator<I> {
             let r = Packet::from_iter(&mut self.buf.iter().copied());
             match r {
                 Err(BadDeserialization::BadChecksum) => {
+                    self.consecutive_inc = 0;
                     self.buf.pop_front();
                 }
                 Err(BadDeserialization::BadMagic) => {
+                    self.consecutive_inc = 0;
                     self.buf.pop_front();
                 }
                 Err(BadDeserialization::IncompleteRead) => {
-                    // this should probably be just `take`
-                    for _ in 0..64 {
+                    // if we trigger IncompleteRead twice in a row,
+                    // the upstream iterator returned None twice; so it's empty
+                    if self.consecutive_inc > 0 {
+                        return None;
+                    }
+                    // this should probably be just `take.collect_into()` (unstable) or
+                    // next_chunk() (also unstable)
+
+                    for _ in 0..256 {
                         match self.stream.next() {
                             Some(u) => self.buf.push_back(u),
-                            None => break,
+                            None => {
+                                self.consecutive_inc += 1;
+                                break;
+                            }
                         }
                     }
                 }
                 Err(BadDeserialization::Unsupported(class)) => {
+                    self.consecutive_inc = 0;
                     self.buf.pop_front();
                     println!("Eeek! {}", class);
                 }
                 Ok(p) => {
+                    self.consecutive_inc = 0;
                     drop(self.buf.drain(..(p.len_with_frame())));
                     return Some(p);
                 }
@@ -460,5 +479,19 @@ mod tests {
             count += 1;
         }
         assert_eq!(count, 2);
+    }
+    #[test]
+    fn from_iterator_incomplete_payload() {
+        let buf = vec![
+            0xb5, 0x62, 0x01, 0x20, 0x10, 0x00, 0xce, 0x74, 0x3e, 0x04, 0x88, 0xcc, 0xfa, 0xff,
+            0x81, 0x07, 0x11, 0x07, 0x2c, 0x33, 0x31, 0x01,
+        ];
+        let mut _iter = buf.into_iter();
+        let iter = PacketIterator::new(&mut _iter);
+        let mut count = 0;
+        for _ in iter {
+            count += 1;
+        }
+        assert_eq!(count, 0);
     }
 }
