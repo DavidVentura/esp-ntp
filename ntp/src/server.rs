@@ -2,7 +2,7 @@ use crate::proto::*;
 use chrono::{DateTime, Utc};
 use std::time::Duration;
 pub struct GPSServer {
-    reftime: Option<DateTime<Utc>>,
+    pub reftime: Option<DateTime<Utc>>,
 }
 
 impl GPSServer {
