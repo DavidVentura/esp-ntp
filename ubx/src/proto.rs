@@ -250,7 +250,7 @@ pub struct TimeGPS {
     pub week: i16,
     pub leap_sec: i8,
     pub valid_flags: Valid,
-    pub accuracy_nanos: u32,
+    pub accuracy: Duration,
 }
 
 fn buf_to_2u8(buf: &[u8]) -> [u8; 2] {
@@ -268,14 +268,17 @@ impl From<&[u8]> for TimeGPS {
             week: i16::from_le_bytes(buf_to_2u8(&buf[8..10])),
             leap_sec: buf[10] as i8,
             valid_flags: Valid::from(buf[11]),
-            accuracy_nanos: u32::from_le_bytes(buf_to_4u8(&buf[12..])),
+            accuracy: Duration::from_nanos(u32::from_le_bytes(buf_to_4u8(&buf[12..])) as u64),
         }
     }
 }
+
 impl From<TimeGPS> for Option<DateTime<Utc>> {
     fn from(t: TimeGPS) -> Option<DateTime<Utc>> {
-        if t.accuracy_nanos > 1_000_000_000 {
-            // 1s?
+        if t.accuracy > Duration::from_millis(100) {
+            return None;
+        }
+        if !t.valid_flags.time_of_week || !t.valid_flags.week_num || !t.valid_flags.leap_sec {
             return None;
         }
         // https://www.gps.gov/technical/icwg/IS-GPS-200G.pdf, page 39
@@ -551,7 +554,7 @@ mod tests {
         match pp {
             ParsedPacket::Navigation(n) => match n {
                 NavPacket::TimeGPS(t) => {
-                    assert_eq!(t.accuracy_nanos, 1);
+                    assert_eq!(t.accuracy, Duration::from_nanos(1));
                     // converted from gps week + gps seconds of week with
                     // https://www.labsat.co.uk/index.php/en/gps-time-calculator
                     // 2016-10-30T19:46:24.997659144Z
