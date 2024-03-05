@@ -35,33 +35,6 @@ pub struct UartCfg {
 }
 #[derive(Debug)]
 pub struct Port {
-    /*
-    2, 16bit le bitflags (00 01; 00 01), first is PROTO IN, second is PROTO OUT
-    B5 62
-    06 00
-    14 00
-    04 00 00 00 00 32 00 00 00 00 00 00 01 00 01 00 00 00 00 00
-    52 94
-
-    00 = None
-    01 = UBX
-    02 = NMEA
-    03 = NMEA + UBX
-    (others)
-
-    04 = SPI
-    uart in 9600 8N1, ubx-ubx, lsb
-    B5 62
-    06 00
-    14 00
-    01 00 00 00 D0 08 00 00 80 25 00 00 01 00 01 00 00 00 00 00
-    ^^^^^ serial
-                ^^^^^ 8N1
-                      ^^ LSB (MSB=1)
-                            ^^^^^^^^^^^ baudrate
-                                        ^^^^^^^^^^^ in/out
-    9A 79
-    */
     pub port_mode: PortMode,
     pub proto_in: PortProto,
     pub proto_out: PortProto,
@@ -79,6 +52,7 @@ impl Serialize for PortProto {
         out
     }
 }
+
 impl Serialize for UartCfg {
     fn serialize(&self) -> Vec<u8> {
         let mut out = Vec::new();
@@ -123,7 +97,7 @@ impl From<Packet> for NavPacket {
         match p.id {
             0x20 => NavPacket::TimeGPS(TimeGPS::from(p.payload.as_slice())),
             0x21 => NavPacket::TimeUTC(TimeUTC::from(p.payload.as_slice())),
-            _ => panic!("idk how to handle id {}", p.id),
+            _ => unimplemented!("idk how to handle id {}", p.id),
         }
     }
 }
@@ -485,11 +459,13 @@ impl<I: Iterator<Item = u8>> Iterator for PacketIterator<I> {
                     self.buf.pop_front();
                 }
                 Err(BadDeserialization::IncompleteRead) => {
-                    // if we trigger IncompleteRead twice in a row,
-                    // the upstream iterator returned None twice; so it's empty
-
+                    // This is terrible for performance, but
+                    // simple iterators will block when reading, instead of returning None
+                    // which means the batch optimization does not work
                     self.buf.push_back(self.stream.next()?);
                     /*
+                    // if we trigger IncompleteRead twice in a row,
+                    // the upstream iterator returned None twice; so it's empty
                     println!("incomplete");
                     if self.consecutive_inc > 0 {
                         return None;
