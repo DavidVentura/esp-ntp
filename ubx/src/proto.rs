@@ -487,21 +487,29 @@ impl<I: Iterator<Item = u8>> Iterator for PacketIterator<I> {
                 Err(BadDeserialization::IncompleteRead) => {
                     // if we trigger IncompleteRead twice in a row,
                     // the upstream iterator returned None twice; so it's empty
+
+                    self.buf.push_back(self.stream.next()?);
+                    /*
+                    println!("incomplete");
                     if self.consecutive_inc > 0 {
                         return None;
                     }
                     // this should probably be just `take.collect_into()` (unstable) or
                     // next_chunk() (also unstable)
 
-                    for _ in 0..256 {
+                    for _ in 0..2 {
                         match self.stream.next() {
-                            Some(u) => self.buf.push_back(u),
+                            Some(u) => {
+                                println!("batch buf, got b {u:x}");
+                                self.buf.push_back(u)
+                            }
                             None => {
                                 self.consecutive_inc += 1;
                                 break;
                             }
                         }
                     }
+                    */
                 }
                 Err(BadDeserialization::Unsupported(class)) => {
                     self.consecutive_inc = 0;
