@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 chrono = { version = "0.4.34", default-features = false}
 serial2 = "0.2.20"
+ntp = { path = "../ntp" }
 
 [[bin]]
 name = "uart"
