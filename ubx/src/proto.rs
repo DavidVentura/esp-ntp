@@ -2,7 +2,7 @@ use chrono::{DateTime, NaiveDate, TimeDelta, Utc};
 use std::collections::VecDeque;
 use std::time::Duration;
 
-trait Serialize {
+pub trait Serialize {
     fn serialize(&self) -> Vec<u8>;
 }
 #[derive(Debug)]
@@ -82,7 +82,7 @@ impl Serialize for PortProto {
 impl Serialize for UartCfg {
     fn serialize(&self) -> Vec<u8> {
         let mut out = Vec::new();
-        out.extend(u32::to_le_bytes(1)); // 1 = UART
+        out.extend(u32::to_le_bytes(1)); // 1 = UART; 4 SPI
         out.extend(match self.mode {
             UartMode::Mode8N1 => vec![0xD0, 0x08],
         });
@@ -511,7 +511,6 @@ impl<I: Iterator<Item = u8>> Iterator for PacketIterator<I> {
                 Ok(p) => {
                     self.consecutive_inc = 0;
                     drop(self.buf.drain(..(p.len_with_frame())));
-                    println!("local buf size {}", self.buf.len());
                     return Some(p);
                 }
             }
