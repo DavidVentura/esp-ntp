@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use ntp::proto::*;
 use ntp::server::GPSServer;
 use std::collections::VecDeque;
+use std::env;
 use std::io;
 use std::net::UdpSocket;
 use std::sync::{Arc, Mutex};
@@ -9,7 +10,11 @@ use std::time::Duration;
 use ubx::proto::*;
 
 fn main() {
-    let port = serial2::SerialPort::open("/dev/ttyUSB0", 9600).unwrap();
+    let args: Vec<String> = env::args().collect();
+    if args.len() != 2 {
+        panic!("Expected 1 argument, serial device (ie: /dev/ttyUSB1)");
+    }
+    let port = serial2::SerialPort::open(args[1].clone(), 9600).unwrap();
 
     let si = SerialIterator {
         buf: VecDeque::new(),

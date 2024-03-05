@@ -5,11 +5,15 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+bin = ["dep:serial2"]
+
 [dependencies]
 chrono = { version = "0.4.34", default-features = false}
-serial2 = "0.2.20"
+serial2 = { version = "0.2.20", optional = true }
 ntp = { path = "../ntp" }
 
 [[bin]]
+default-features = ["bin"]
 name = "uart"
 path = "src/bin.rs"
