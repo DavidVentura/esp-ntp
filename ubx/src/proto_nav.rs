@@ -42,6 +42,15 @@ pub enum NavFix {
     Reserved,
 }
 
+impl NavFix {
+    pub fn valid(&self) -> bool {
+        match self {
+            NavFix::NoFix => false,
+            NavFix::Reserved => false,
+            _ => true,
+        }
+    }
+}
 impl From<u8> for NavFix {
     fn from(u: u8) -> NavFix {
         match u {
