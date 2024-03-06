@@ -18,5 +18,7 @@ pub fn set_time(now: DateTime<Utc>) {
     let tv_nsec = now.timestamp_subsec_nanos().try_into().unwrap();
     let tp = libc::timespec { tv_sec, tv_nsec };
 
-    let ret = unsafe { libc::clock_settime(libc::CLOCK_REALTIME, &tp as *const libc::timespec) };
+    let is_error =
+        unsafe { libc::clock_settime(libc::CLOCK_REALTIME, &tp as *const libc::timespec) };
+    assert_eq!(is_error, 0);
 }

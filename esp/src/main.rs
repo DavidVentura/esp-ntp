@@ -1,18 +1,22 @@
+mod clock;
+mod http;
+mod metrics;
+mod uart;
+mod wifi;
+
 use chrono::{DateTime, Utc};
 use esp_idf_hal::prelude::Peripherals;
 use ntp::proto::*;
 use ntp::server::GPSServer;
 use std::net::UdpSocket;
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+
+use crate::metrics::{Metric, Metrics};
 use ubx::helpers::disable_nmea;
 use ubx::proto::{Frame, PacketIterator, ParsedPacket};
 use ubx::proto_nav::{NavPacket, NavStatusPoll, TimeGPS};
-
-mod clock;
-mod uart;
-mod wifi;
 
 const SSID: &'static str = env!("SSID");
 const PASS: &'static str = env!("PASS");
@@ -32,58 +36,75 @@ fn main() -> std::io::Result<()> {
 
     let _ = u.write(&disable_nmea(9600));
 
-    let _w = wifi::configure(SSID, PASS, modem).expect("Could not configure wifi");
+    let (metric_tx, metric_rx) = mpsc::channel();
     thread::scope(|s| {
-        s.spawn(move || {
-            println!("Wifi is up, handling NTP queries");
-            handle_ntp_queries(gpsserver2)
-        });
-
         s.spawn(|| {
             let buf = TimeGPS::serialize_request();
             let buf2 = (NavStatusPoll {}).frame();
             loop {
-                println!("asking");
                 let _ = u.write(&buf);
-                thread::sleep(Duration::from_secs(5));
-                println!("asking gps status also");
+                thread::sleep(Duration::from_secs(1));
                 let _ = u.write(&buf2);
-                thread::sleep(Duration::from_secs(5));
+                thread::sleep(Duration::from_secs(4));
             }
         });
         s.spawn(|| loop {
             let byte_iter = u.into_iter();
             for packet in PacketIterator::new(byte_iter) {
                 let pp = ParsedPacket::from(packet);
-                println!("{pp:?}");
+                // println!("{pp:?}");
                 match pp {
                     ParsedPacket::Navigation(n) => match n {
                         NavPacket::TimeGPS(t) => {
+                            metric_tx.send(Metric::Accuracy(t.accuracy)).unwrap();
                             let now: Option<DateTime<Utc>> = t.into();
                             if now.is_some() {
                                 let now = now.unwrap();
-                                println!(
-                                    "gps: {:?}\nesp: {:?}\ndelta: {:?}ms",
-                                    now,
-                                    clock::now(),
-                                    (now - clock::now()).abs().num_milliseconds()
-                                );
+                                let adj = (now - clock::now()).num_milliseconds();
+                                metric_tx.send(Metric::ClockAdjust(adj)).unwrap();
                                 gpsserver.lock().unwrap().update_reference_time(now);
                                 clock::set_time(now);
                             }
                         }
                         NavPacket::Status(s) => {
-                            println!("status {:?}", s);
+                            metric_tx.send(Metric::HasFix(s.fix.valid())).unwrap();
+                            metric_tx.send(Metric::SensorUptime(s.uptime)).unwrap();
                         }
                         NavPacket::TimeUTC(_t) => {
                             println!("UTC");
                         }
                     },
                     ParsedPacket::Nack => {}
-                    ParsedPacket::Configuration(c) => {}
+                    ParsedPacket::Configuration(c) => {
+                        println!("Configuration, {:?}", c)
+                    }
                 }
             }
         });
+
+        let metrics = Metrics::default();
+        let metrics1 = Arc::new(Mutex::new(metrics));
+        let metrics2 = metrics1.clone();
+        s.spawn(move || {
+            println!("Handling metrics");
+            loop {
+                let metric = metric_rx.recv().unwrap();
+                println!("Metric {:?}", metric);
+                metrics1.lock().unwrap().update(metric);
+            }
+        });
+
+        let _w = wifi::configure(SSID, PASS, modem).expect("Could not configure wifi");
+        println!("Wifi is up");
+
+        let metric_tx2 = metric_tx.clone();
+        s.spawn(move || {
+            println!("Handling NTP queries");
+            handle_ntp_queries(gpsserver2, metric_tx2)
+        });
+
+        println!("Serving metrics");
+        http::server(metrics2).expect("Could not start up metrics server");
 
         loop {
             thread::sleep(Duration::from_millis(100));
@@ -91,7 +112,10 @@ fn main() -> std::io::Result<()> {
     })
 }
 
-fn handle_ntp_queries(s: Arc<Mutex<GPSServer>>) -> std::io::Result<()> {
+fn handle_ntp_queries(
+    s: Arc<Mutex<GPSServer>>,
+    metrics: mpsc::Sender<Metric>,
+) -> std::io::Result<()> {
     let socket = UdpSocket::bind("0.0.0.0:123")?;
     loop {
         let mut buf = [0; 128]; // 48 should be enough
@@ -100,6 +124,7 @@ fn handle_ntp_queries(s: Arc<Mutex<GPSServer>>) -> std::io::Result<()> {
             println!("bad, len was {}: {:?}", amt, &buf);
             continue;
         }
+        metrics.send(Metric::ReceivedNtpQuery).unwrap();
         println!("pkt from {:?}", src);
         let buf = &mut buf[..NTP_MESSAGE_LEN];
         let q = NTPQuery::deserialize(buf).unwrap();
@@ -118,6 +143,7 @@ fn handle_ntp_queries(s: Arc<Mutex<GPSServer>>) -> std::io::Result<()> {
             Some(answer) => {
                 let outbuf = answer.serialize();
                 socket.send_to(&outbuf, src)?;
+                metrics.send(Metric::AnsweredNtpQuery).unwrap();
             }
             None => println!("No GPS fix, dropping packet"),
         }
