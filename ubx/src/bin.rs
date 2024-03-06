@@ -9,6 +9,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use ubx::helpers::disable_nmea;
 use ubx::proto::*;
+use ubx::proto_cfg::*;
+use ubx::proto_nav::*;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -27,7 +29,7 @@ fn main() {
         rate: Duration::from_millis(1000),
     }
     .serialize_request();
-    port.write_all(disable_nmea(9600)).unwrap();
+    port.write_all(&disable_nmea(9600)).unwrap();
     port.write(&buf).unwrap();
 
     let buf = TimeGPS::serialize_request();
