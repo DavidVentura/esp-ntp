@@ -5,12 +5,14 @@ use std::time::Duration;
 
 #[derive(Debug)]
 pub enum NavPacket {
+    Status(NavStatus),
     TimeUTC(TimeUTC),
     TimeGPS(TimeGPS),
 }
 impl From<Packet> for NavPacket {
     fn from(p: Packet) -> NavPacket {
         match p.id {
+            0x03 => NavPacket::Status(NavStatus::from(p.payload.as_slice())),
             0x20 => NavPacket::TimeGPS(TimeGPS::from(p.payload.as_slice())),
             0x21 => NavPacket::TimeUTC(TimeUTC::from(p.payload.as_slice())),
             _ => unimplemented!("idk how to handle id {}", p.id),
@@ -29,6 +31,63 @@ impl TimeGPS {
     }
 }
 
+#[derive(Debug)]
+pub enum NavFix {
+    NoFix,
+    DeadReckoning,
+    Fix2D,
+    Fix3D,
+    GpsDeadReckoning,
+    TimeOnly,
+    Reserved,
+}
+
+impl From<u8> for NavFix {
+    fn from(u: u8) -> NavFix {
+        match u {
+            0 => NavFix::NoFix,
+            1 => NavFix::DeadReckoning,
+            2 => NavFix::Fix2D,
+            3 => NavFix::Fix3D,
+            4 => NavFix::GpsDeadReckoning,
+            5 => NavFix::TimeOnly,
+            _ => NavFix::Reserved,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct NavStatus {
+    pub milli: u32,
+    pub fix: NavFix,
+    pub time_to_fix: u32,
+    pub uptime: u32,
+}
+
+#[derive(Debug)]
+pub struct NavStatusPoll {}
+impl Poll for NavStatusPoll {
+    fn class(&self) -> Class {
+        Class::Navigation
+    }
+    fn id(&self) -> u8 {
+        0x03
+    }
+    fn polling_payload(&self) -> Vec<u8> {
+        vec![]
+    }
+}
+
+impl From<&[u8]> for NavStatus {
+    fn from(buf: &[u8]) -> NavStatus {
+        NavStatus {
+            milli: u32::from_le_bytes(buf_to_4u8(&buf[0..4])),
+            fix: NavFix::from(buf[4]),
+            time_to_fix: u32::from_le_bytes(buf_to_4u8(&buf[8..12])),
+            uptime: u32::from_le_bytes(buf_to_4u8(&buf[12..16])),
+        }
+    }
+}
 #[derive(Debug, Clone, Copy)]
 pub struct Valid {
     pub time_of_week: bool,

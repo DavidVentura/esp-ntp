@@ -55,6 +55,7 @@ fn main() {
                         }
                     }
                     NavPacket::TimeUTC(t) => {}
+                    NavPacket::Status(s) => {}
                 },
                 ParsedPacket::Nack => println!("sad nack"),
             };

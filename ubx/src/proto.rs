@@ -2,9 +2,31 @@ use std::collections::VecDeque;
 
 use crate::proto_cfg::CfgPacket;
 use crate::proto_nav::NavPacket;
+
 pub trait Serialize {
     fn serialize(&self) -> Vec<u8>;
 }
+pub trait Poll {
+    fn class(&self) -> Class;
+    fn id(&self) -> u8;
+    fn polling_payload(&self) -> Vec<u8>;
+}
+
+pub trait Frame {
+    fn frame(&self) -> Vec<u8>;
+}
+
+impl<T: Poll> Frame for T {
+    fn frame(&self) -> Vec<u8> {
+        Packet {
+            class: self.class().into(),
+            id: self.id(),
+            payload: self.polling_payload(),
+        }
+        .serialize()
+    }
+}
+
 #[derive(Debug)]
 pub enum ParsedPacket {
     Navigation(NavPacket),
