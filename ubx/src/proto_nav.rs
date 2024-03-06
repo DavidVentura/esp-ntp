@@ -58,10 +58,10 @@ impl From<u8> for NavFix {
 
 #[derive(Debug)]
 pub struct NavStatus {
-    pub milli: u32,
+    _milli: u32,
     pub fix: NavFix,
-    pub time_to_fix: u32,
-    pub uptime: u32,
+    _time_to_fix: u32,
+    pub uptime: Duration,
 }
 
 #[derive(Debug)]
@@ -81,10 +81,10 @@ impl Poll for NavStatusPoll {
 impl From<&[u8]> for NavStatus {
     fn from(buf: &[u8]) -> NavStatus {
         NavStatus {
-            milli: u32::from_le_bytes(buf_to_4u8(&buf[0..4])),
+            _milli: u32::from_le_bytes(buf_to_4u8(&buf[0..4])),
             fix: NavFix::from(buf[4]),
-            time_to_fix: u32::from_le_bytes(buf_to_4u8(&buf[8..12])),
-            uptime: u32::from_le_bytes(buf_to_4u8(&buf[12..16])),
+            _time_to_fix: u32::from_le_bytes(buf_to_4u8(&buf[8..12])),
+            uptime: Duration::from_millis(u32::from_le_bytes(buf_to_4u8(&buf[12..16])) as u64),
         }
     }
 }
@@ -106,12 +106,12 @@ impl From<u8> for Valid {
 
 #[derive(Debug, Copy, Clone)]
 pub struct TimeGPS {
-    pub milli: u32,
+    milli: u32,
     /// -500k .. 500k
-    pub nanos: i32,
-    pub week: i16,
-    pub leap_sec: i8,
-    pub valid_flags: Valid,
+    nanos: i32,
+    week: i16,
+    leap_sec: i8,
+    valid_flags: Valid,
     pub accuracy: Duration,
 }
 
@@ -157,8 +157,8 @@ impl From<TimeGPS> for Option<DateTime<Utc>> {
 impl From<&[u8]> for TimeUTC {
     fn from(buf: &[u8]) -> TimeUTC {
         TimeUTC {
-            weeks_milli: u32::from_le_bytes(buf_to_4u8(buf)),
-            accuracy: u32::from_le_bytes(buf_to_4u8(&buf[4..8])),
+            _weeks_milli: u32::from_le_bytes(buf_to_4u8(buf)),
+            _accuracy: u32::from_le_bytes(buf_to_4u8(&buf[4..8])),
             nanos: i32::from_le_bytes(buf_to_4u8(&buf[8..12])),
             year: u16::from_le_bytes(buf_to_2u8(&buf[12..14])),
             month: buf[14],
@@ -166,23 +166,23 @@ impl From<&[u8]> for TimeUTC {
             hour: buf[16],
             min: buf[17],
             sec: buf[18],
-            valid: Valid::from(buf[19]),
+            _valid: Valid::from(buf[19]),
         }
     }
 }
 
 #[derive(Debug)]
 pub struct TimeUTC {
-    pub weeks_milli: u32,
-    pub accuracy: u32,
-    pub nanos: i32,
-    pub year: u16,
-    pub month: u8,
-    pub day: u8,
-    pub hour: u8,
-    pub min: u8,
-    pub sec: u8,
-    pub valid: Valid,
+    _weeks_milli: u32,
+    _accuracy: u32,
+    nanos: i32,
+    year: u16,
+    month: u8,
+    day: u8,
+    hour: u8,
+    min: u8,
+    sec: u8,
+    _valid: Valid,
 }
 
 impl From<TimeUTC> for DateTime<Utc> {
@@ -226,9 +226,7 @@ mod tests {
                     assert_eq!(dt.second(), 24);
                     assert_eq!(dt.nanosecond(), 997659144);
                 }
-                NavPacket::TimeUTC(t) => {
-                    println!("UTC {:?}", DateTime::<Utc>::from(t));
-                }
+                _ => panic!(),
             },
             _ => panic!(),
         }
