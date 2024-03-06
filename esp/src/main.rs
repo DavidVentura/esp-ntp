@@ -37,49 +37,15 @@ fn main() -> std::io::Result<()> {
     let _ = u.write(&disable_nmea(9600));
 
     let (metric_tx, metric_rx) = mpsc::channel();
+    let metric_tx2 = metric_tx.clone();
+    let metric_tx3 = metric_tx.clone();
+
     thread::scope(|s| {
         s.spawn(|| {
-            let buf = TimeGPS::serialize_request();
-            let buf2 = (NavStatusPoll {}).frame();
-            loop {
-                let _ = u.write(&buf);
-                thread::sleep(Duration::from_secs(1));
-                let _ = u.write(&buf2);
-                thread::sleep(Duration::from_secs(4));
-            }
+            poll_ubx(&u);
         });
-        s.spawn(|| loop {
-            let byte_iter = u.into_iter();
-            for packet in PacketIterator::new(byte_iter) {
-                let pp = ParsedPacket::from(packet);
-                // println!("{pp:?}");
-                match pp {
-                    ParsedPacket::Navigation(n) => match n {
-                        NavPacket::TimeGPS(t) => {
-                            metric_tx.send(Metric::Accuracy(t.accuracy)).unwrap();
-                            let now: Option<DateTime<Utc>> = t.into();
-                            if now.is_some() {
-                                let now = now.unwrap();
-                                let adj = (now - clock::now()).num_milliseconds();
-                                metric_tx.send(Metric::ClockAdjust(adj)).unwrap();
-                                gpsserver.lock().unwrap().update_reference_time(now);
-                                clock::set_time(now);
-                            }
-                        }
-                        NavPacket::Status(s) => {
-                            metric_tx.send(Metric::HasFix(s.fix.valid())).unwrap();
-                            metric_tx.send(Metric::SensorUptime(s.uptime)).unwrap();
-                        }
-                        NavPacket::TimeUTC(_t) => {
-                            println!("UTC");
-                        }
-                    },
-                    ParsedPacket::Nack => {}
-                    ParsedPacket::Configuration(c) => {
-                        println!("Configuration, {:?}", c)
-                    }
-                }
-            }
+        s.spawn(|| {
+            handle_ubx_feed(&u, gpsserver, metric_tx3);
         });
 
         let metrics = Metrics::default();
@@ -97,7 +63,6 @@ fn main() -> std::io::Result<()> {
         let _w = wifi::configure(SSID, PASS, modem).expect("Could not configure wifi");
         println!("Wifi is up");
 
-        let metric_tx2 = metric_tx.clone();
         s.spawn(move || {
             println!("Handling NTP queries");
             handle_ntp_queries(gpsserver2, metric_tx2)
@@ -112,6 +77,52 @@ fn main() -> std::io::Result<()> {
     })
 }
 
+fn poll_ubx(u: &uart::Ublox<'_>) {
+    let buf = TimeGPS::serialize_request();
+    let buf2 = (NavStatusPoll {}).frame();
+    loop {
+        let _ = u.write(&buf);
+        thread::sleep(Duration::from_secs(1));
+        let _ = u.write(&buf2);
+        thread::sleep(Duration::from_secs(4));
+    }
+}
+fn handle_ubx_feed(
+    u: &uart::Ublox<'_>,
+    gpsserver: Arc<Mutex<GPSServer>>,
+    metrics: mpsc::Sender<Metric>,
+) {
+    let byte_iter = u.into_iter();
+    for packet in PacketIterator::new(byte_iter) {
+        let pp = ParsedPacket::from(packet);
+        match pp {
+            ParsedPacket::Navigation(n) => match n {
+                NavPacket::TimeGPS(t) => {
+                    metrics.send(Metric::Accuracy(t.accuracy)).unwrap();
+                    let now: Option<DateTime<Utc>> = t.into();
+                    if now.is_some() {
+                        let now = now.unwrap();
+                        let adj = (now - clock::now()).num_milliseconds();
+                        metrics.send(Metric::ClockAdjust(adj)).unwrap();
+                        gpsserver.lock().unwrap().update_reference_time(now);
+                        clock::set_time(now);
+                    }
+                }
+                NavPacket::Status(s) => {
+                    metrics.send(Metric::HasFix(s.fix.valid())).unwrap();
+                    metrics.send(Metric::SensorUptime(s.uptime)).unwrap();
+                }
+                NavPacket::TimeUTC(_t) => {
+                    println!("UTC");
+                }
+            },
+            ParsedPacket::Nack => {}
+            ParsedPacket::Configuration(c) => {
+                println!("Configuration, {:?}", c)
+            }
+        }
+    }
+}
 fn handle_ntp_queries(
     s: Arc<Mutex<GPSServer>>,
     metrics: mpsc::Sender<Metric>,
