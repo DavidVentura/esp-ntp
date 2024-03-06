@@ -69,7 +69,7 @@ fn main() -> std::io::Result<()> {
         });
 
         println!("Serving metrics");
-        http::server(metrics2).expect("Could not start up metrics server");
+        let _h = http::server(metrics2).expect("Could not start up metrics server");
 
         loop {
             thread::sleep(Duration::from_millis(100));
@@ -93,6 +93,7 @@ fn handle_ubx_feed(
     metrics: mpsc::Sender<Metric>,
 ) {
     let byte_iter = u.into_iter();
+    let mut synced_once = false;
     for packet in PacketIterator::new(byte_iter) {
         let pp = ParsedPacket::from(packet);
         match pp {
@@ -103,7 +104,10 @@ fn handle_ubx_feed(
                     if now.is_some() {
                         let now = now.unwrap();
                         let adj = (now - clock::now()).num_milliseconds();
-                        metrics.send(Metric::ClockAdjust(adj)).unwrap();
+                        if synced_once {
+                            metrics.send(Metric::ClockAdjust(adj)).unwrap();
+                        }
+                        synced_once = true;
                         gpsserver.lock().unwrap().update_reference_time(now);
                         clock::set_time(now);
                     }

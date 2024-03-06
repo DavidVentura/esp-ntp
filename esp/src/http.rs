@@ -10,9 +10,12 @@ pub(crate) fn server(m: Arc<Mutex<Metrics>>) -> Result<EspHttpServer<'static>, E
 
     httpserver.fn_handler("/", Method::Get, move |req| {
         // Can't get `req.content_len()` to work, the Headers trait doesnt seem to work
-        let mut resp = req.into_ok_response()?;
+        let mut resp = req.into_response(200, None, &[("content-type", "text/plain")])?;
 
-        resp.write(m.lock().unwrap().serialize().as_bytes())?;
+        for ln in m.lock().unwrap().serialize() {
+            resp.write(ln.as_bytes())?;
+            resp.write(b"\n")?;
+        }
         Ok::<(), EspIOError>(())
     })?;
 
