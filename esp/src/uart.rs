@@ -1,11 +1,11 @@
 use esp_idf_hal::gpio::{Gpio0, Gpio1, InputPin, OutputPin};
 use esp_idf_hal::peripheral::Peripheral;
+use esp_idf_hal::sys::EspError;
 use esp_idf_hal::uart::config::Config;
 use esp_idf_hal::uart::Uart;
 use esp_idf_hal::uart::UartDriver;
 use esp_idf_hal::units::Hertz;
 use std::collections::VecDeque;
-use ubx::proto::{BadDeserialization, Packet};
 
 pub struct Ublox<'d> {
     pub(crate) u: UartDriver<'d>,
@@ -23,7 +23,7 @@ impl<'d> Ublox<'d> {
             rx,
             Option::<Gpio0>::None,
             Option::<Gpio1>::None,
-            &Config::new().baudrate(Hertz(115_200)),
+            &Config::new().baudrate(Hertz(9600)),
         )
         .expect("Can't set up UartDriver");
         Ublox { u }
@@ -35,6 +35,10 @@ impl<'d> Ublox<'d> {
             u: self,
         }
     }
+    pub fn write(&self, buf: &[u8]) -> Result<(), EspError> {
+        self.u.write(buf)?;
+        Ok(())
+    }
 }
 
 pub struct UbloxIterator<'a> {
@@ -45,15 +49,15 @@ pub struct UbloxIterator<'a> {
 impl<'a> Iterator for UbloxIterator<'a> {
     type Item = u8;
     fn next(&mut self) -> Option<u8> {
-        let remaining = self.u.u.remaining_read().unwrap();
-        let mut buf = vec![0 as u8; remaining];
-        self.u.u.read(buf.as_mut_slice(), 1).unwrap();
-        self.buf.extend(&buf);
-
-        if self.buf.len() == 0 {
-            self.u.u.read(buf.as_mut_slice(), u32::MAX).unwrap();
-            self.buf.extend(&buf);
+        if let Some(b) = self.buf.pop_front() {
+            return Some(b);
         }
+        let mut read: usize = 0;
+        let mut buf = vec![0 as u8; 128];
+        while read == 0 {
+            read = self.u.u.read(buf.as_mut_slice(), 20).unwrap();
+        }
+        self.buf.extend(&buf);
         self.buf.pop_front()
     }
 }
