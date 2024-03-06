@@ -7,6 +7,7 @@ use std::io;
 use std::net::UdpSocket;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use ubx::helpers::disable_nmea;
 use ubx::proto::*;
 
 fn main() {
@@ -26,7 +27,7 @@ fn main() {
         rate: Duration::from_millis(1000),
     }
     .serialize_request();
-    disable_nmea(&port).unwrap();
+    port.write_all(disable_nmea(9600)).unwrap();
     port.write(&buf).unwrap();
 
     let buf = TimeGPS::serialize_request();
@@ -89,28 +90,6 @@ fn handle_ntp_queries(s: Arc<Mutex<GPSServer>>) -> std::io::Result<()> {
             }
         }
     }
-}
-
-fn disable_nmea(port: &serial2::SerialPort) -> Result<(), Box<dyn std::error::Error>> {
-    let pc = Port {
-        port_mode: PortMode::UART(UartCfg {
-            baudrate: 9600,
-            mode: UartMode::Mode8N1,
-            lsb: true,
-        }),
-        proto_in: PortProto::UBX,
-        proto_out: PortProto::UBX,
-    };
-    let buf = pc.serialize();
-    let p = Packet {
-        class: Class::ConfigInput,
-        id: 0x0,
-        payload: buf,
-    };
-    let buf = p.serialize();
-    println!("shutting up! {:x?}", buf);
-    port.write_all(&buf)?;
-    Ok(())
 }
 
 pub struct SerialIterator<'a> {
