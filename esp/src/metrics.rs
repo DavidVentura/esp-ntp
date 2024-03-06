@@ -121,8 +121,8 @@ impl Metrics {
             let quantile = *q;
             match self.accuracy.quantile(quantile) {
                 Some(value) => ret.push(format!(
-                    r#"gps_clock_accuracy_us{{quantile="0.{quantile}"}} {}"#,
-                    value.as_micros() as u64
+                    r#"gps_clock_accuracy_ns{{quantile="0.{quantile}"}} {}"#,
+                    value.as_nanos() as u64
                 )),
                 None => (),
             }
@@ -137,6 +137,7 @@ impl Metrics {
             }
         }
 
+        ret.push(format!("sensor_uptime_sec {}", self.uptime.as_secs()));
         ret.push(format!("has_fix {}", self.has_fix as u8));
         ret.push(format!("received_ntp_queries {}", self.rcvd_ntp_queries));
         ret.push(format!(

@@ -14,18 +14,20 @@ This project runs:
 - An HTTP server for prometheus metrics, port 80, /metrics.
 
 The metrics currently look like
-```
-gps_clock_accuracy_us{quantile="0.10"} 11199
-gps_clock_accuracy_us{quantile="0.50"} 11204
-gps_clock_accuracy_us{quantile="0.90"} 11210
-gps_clock_accuracy_us{quantile="0.99"} 11211
-rtc_clock_adjust_ms{quantile="0.10"} -159
-rtc_clock_adjust_ms{quantile="0.50"} 0
-rtc_clock_adjust_ms{quantile="0.90"} 159
-rtc_clock_adjust_ms{quantile="0.99"} 190
-has_fix 0
-received_ntp_queries 10
-answered_ntp_queries 10
-```
 
+```
+gps_clock_accuracy_ns{quantile="0.10"} 48
+gps_clock_accuracy_ns{quantile="0.50"} 76
+gps_clock_accuracy_ns{quantile="0.90"} 92
+gps_clock_accuracy_ns{quantile="0.99"} 440
+rtc_clock_adjust_ms{quantile="0.10"} -9
+rtc_clock_adjust_ms{quantile="0.50"} 0
+rtc_clock_adjust_ms{quantile="0.90"} 4
+rtc_clock_adjust_ms{quantile="0.99"} 148
+sensor_uptime_sec 70
+has_fix 1
+received_ntp_queries 26
+answered_ntp_queries 26
+
+```
 and I'm planning to add the # of visible satellites
