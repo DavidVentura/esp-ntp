@@ -33,3 +33,7 @@ has_fix 1
 received_ntp_queries 26
 answered_ntp_queries 26
 ```
+
+The built-in RTC clock looks to be _too_ out of whack - 10ms of error in 5s seems to much; it'd be 172s (3 minutes) a day.
+
+I'll probably find a 32kHz crystal and find out whether it's a hardware or software issue.
