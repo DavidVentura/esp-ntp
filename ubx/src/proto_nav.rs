@@ -47,14 +47,25 @@ impl From<u8> for SVFlags {
         }
     }
 }
+#[derive(Debug)]
 struct SVQuality {
-    //
+    _idle: bool,
+    _searching: bool,
+    signal_acquired: bool,
+}
+impl From<u8> for SVQuality {
+    fn from(b: u8) -> SVQuality {
+        SVQuality {
+            _idle: (b & 0b001) > 0,
+            _searching: (b & 0b010) > 0,
+            signal_acquired: (b & 0b100) > 0,
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct SVInfo {
     pub healthy_channels: u8,
-    // TODO: per channel, quality or flags
 }
 
 impl From<&[u8]> for SVInfo {
@@ -62,19 +73,16 @@ impl From<&[u8]> for SVInfo {
         let chan_n = buf[4];
         let mut healthy_n = 0;
         for i in 0..chan_n {
-            let chn = buf[8 + 12 * i as usize];
-            let svid = buf[9 + 12 * i as usize];
+            let _chn = buf[8 + 12 * i as usize];
+            let _svid = buf[9 + 12 * i as usize];
             let flags = buf[10 + 12 * i as usize];
             let f = SVFlags::from(flags);
             let quality = buf[11 + 12 * i as usize];
+            let q = SVQuality::from(quality);
 
-            if !f.unhealthy {
+            if !f.unhealthy && q.signal_acquired {
                 healthy_n += 1;
             }
-
-            println!(
-                "chan #{i}; chn {chn}; svid {svid}; flags {flags:b}={f:?}, quality: {quality:b}"
-            );
         }
         SVInfo {
             healthy_channels: healthy_n,
