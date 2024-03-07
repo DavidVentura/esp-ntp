@@ -16,6 +16,10 @@ This project runs:
 The metrics currently look like
 
 ```
+satellite_count{quantile="0.10"} 1
+satellite_count{quantile="0.50"} 1
+satellite_count{quantile="0.90"} 2
+satellite_count{quantile="0.99"} 2
 gps_clock_accuracy_ns{quantile="0.10"} 48
 gps_clock_accuracy_ns{quantile="0.50"} 76
 gps_clock_accuracy_ns{quantile="0.90"} 92
@@ -28,6 +32,4 @@ sensor_uptime_sec 70
 has_fix 1
 received_ntp_queries 26
 answered_ntp_queries 26
-
 ```
-and I'm planning to add the # of visible satellites
