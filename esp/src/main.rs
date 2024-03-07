@@ -151,24 +151,16 @@ fn handle_ntp_queries(
         println!("pkt from {:?}", src);
         let buf = &mut buf[..NTP_MESSAGE_LEN];
         let q = NTPQuery::deserialize(buf).unwrap();
-        let a = {
+        let answer = {
             let srv = s.lock().unwrap();
-            match srv.reftime {
-                Some(_) => {
-                    let now = clock::now();
-                    Some(srv.answer_query(q, now, now))
-                }
-                None => None,
-            }
-        };
-
-        match a {
-            Some(answer) => {
-                let outbuf = answer.serialize();
-                socket.send_to(&outbuf, src)?;
+            if srv.reftime.is_some() {
                 metrics.send(Metric::AnsweredNtpQuery).unwrap();
             }
-            None => println!("No GPS fix, dropping packet"),
-        }
+            let now = clock::now();
+            srv.answer_query(q, now, now)
+        };
+
+        let outbuf = answer.serialize();
+        socket.send_to(&outbuf, src)?;
     }
 }

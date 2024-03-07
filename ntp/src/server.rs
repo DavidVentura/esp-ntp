@@ -29,7 +29,11 @@ impl GPSServer {
                 v: VersionNumber(NTP_VERSION),
                 m: Mode::Server,
             },
-            peer_stratum: 1,
+            peer_stratum: if self.reftime.is_some() {
+                NTP_STRATUM_ONE
+            } else {
+                NTP_STRATUM_UNSYNCHRONIZED
+            },
             peer_polling_interval: 4, //q.peer_polling_interval,
             root_delay: Fix32 { i: 0, f: 0 },
             peer_clock_precision: PeerPrecision::from(Duration::from_micros(1)),
