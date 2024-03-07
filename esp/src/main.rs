@@ -16,7 +16,7 @@ use std::time::Duration;
 use crate::metrics::{Metric, Metrics};
 use ubx::helpers::disable_nmea;
 use ubx::proto::{Frame, PacketIterator, ParsedPacket};
-use ubx::proto_nav::{NavPacket, NavStatusPoll, TimeGPS};
+use ubx::proto_nav::{NavPacket, NavStatusPoll, SVInfoPoll, TimeGPS};
 
 const SSID: &'static str = env!("SSID");
 const PASS: &'static str = env!("PASS");
@@ -80,11 +80,14 @@ fn main() -> std::io::Result<()> {
 fn poll_ubx(u: &uart::Ublox<'_>) {
     let buf = TimeGPS::serialize_request();
     let buf2 = (NavStatusPoll {}).frame();
+    let buf3 = (SVInfoPoll {}).frame();
     loop {
         let _ = u.write(&buf);
         thread::sleep(Duration::from_secs(1));
         let _ = u.write(&buf2);
-        thread::sleep(Duration::from_secs(4));
+        thread::sleep(Duration::from_secs(1));
+        let _ = u.write(&buf3);
+        thread::sleep(Duration::from_secs(3));
     }
 }
 fn handle_ubx_feed(
@@ -118,6 +121,11 @@ fn handle_ubx_feed(
                 }
                 NavPacket::TimeUTC(_t) => {
                     println!("UTC");
+                }
+                NavPacket::SVInfo(s) => {
+                    metrics
+                        .send(Metric::SatelliteCount(s.healthy_channels))
+                        .unwrap();
                 }
             },
             ParsedPacket::Nack => {}
