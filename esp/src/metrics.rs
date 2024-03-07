@@ -112,7 +112,7 @@ impl Metrics {
             let quantile = *q;
             match self.sat_count.quantile(quantile) {
                 Some(value) => ret.push(format!(
-                    r#"satellite_count{{quantile="0.{quantile}"}} {value}"#
+                    r#"esp_satellite_count{{quantile="0.{quantile}"}} {value}"#
                 )),
                 None => (),
             }
@@ -121,7 +121,7 @@ impl Metrics {
             let quantile = *q;
             match self.accuracy.quantile(quantile) {
                 Some(value) => ret.push(format!(
-                    r#"gps_clock_accuracy_ns{{quantile="0.{quantile}"}} {}"#,
+                    r#"esp_gps_clock_accuracy_ns{{quantile="0.{quantile}"}} {}"#,
                     value.as_nanos() as u64
                 )),
                 None => (),
@@ -131,17 +131,20 @@ impl Metrics {
             let quantile = *q;
             match self.clock_adjust.quantile(quantile) {
                 Some(value) => ret.push(format!(
-                    r#"rtc_clock_adjust_ms{{quantile="0.{quantile}"}} {value}"#
+                    r#"esp_rtc_clock_adjust_ms{{quantile="0.{quantile}"}} {value}"#
                 )),
                 None => (),
             }
         }
 
-        ret.push(format!("sensor_uptime_sec {}", self.uptime.as_secs()));
-        ret.push(format!("has_fix {}", self.has_fix as u8));
-        ret.push(format!("received_ntp_queries {}", self.rcvd_ntp_queries));
+        ret.push(format!("esp_sensor_uptime_sec {}", self.uptime.as_secs()));
+        ret.push(format!("esp_has_fix {}", self.has_fix as u8));
         ret.push(format!(
-            "answered_ntp_queries {}",
+            "esp_received_ntp_queries {}",
+            self.rcvd_ntp_queries
+        ));
+        ret.push(format!(
+            "esp_answered_ntp_queries {}",
             self.answered_ntp_queries
         ));
         ret
