@@ -8,6 +8,7 @@ pub enum NavPacket {
     Status(NavStatus),
     TimeUTC(TimeUTC),
     TimeGPS(TimeGPS),
+    SVInfo(SVInfo),
 }
 impl From<Packet> for NavPacket {
     fn from(p: Packet) -> NavPacket {
@@ -15,6 +16,7 @@ impl From<Packet> for NavPacket {
             0x03 => NavPacket::Status(NavStatus::from(p.payload.as_slice())),
             0x20 => NavPacket::TimeGPS(TimeGPS::from(p.payload.as_slice())),
             0x21 => NavPacket::TimeUTC(TimeUTC::from(p.payload.as_slice())),
+            0x30 => NavPacket::SVInfo(SVInfo::from(p.payload.as_slice())),
             _ => unimplemented!("idk how to handle id {}", p.id),
         }
     }
@@ -28,6 +30,66 @@ impl TimeGPS {
             payload: vec![],
         };
         p.serialize()
+    }
+}
+
+#[derive(Debug)]
+pub struct SVInfoPoll {}
+
+#[derive(Debug)]
+struct SVFlags {
+    unhealthy: bool,
+}
+impl From<u8> for SVFlags {
+    fn from(b: u8) -> SVFlags {
+        SVFlags {
+            unhealthy: (b & 0b10000) > 0,
+        }
+    }
+}
+struct SVQuality {
+    //
+}
+
+#[derive(Debug)]
+pub struct SVInfo {
+    pub healthy_channels: u8,
+    // TODO: per channel, quality or flags
+}
+
+impl From<&[u8]> for SVInfo {
+    fn from(buf: &[u8]) -> SVInfo {
+        let chan_n = buf[4];
+        let mut healthy_n = 0;
+        for i in 0..chan_n {
+            let chn = buf[8 + 12 * i as usize];
+            let svid = buf[9 + 12 * i as usize];
+            let flags = buf[10 + 12 * i as usize];
+            let f = SVFlags::from(flags);
+            let quality = buf[11 + 12 * i as usize];
+
+            if !f.unhealthy {
+                healthy_n += 1;
+            }
+
+            println!(
+                "chan #{i}; chn {chn}; svid {svid}; flags {flags:b}={f:?}, quality: {quality:b}"
+            );
+        }
+        SVInfo {
+            healthy_channels: healthy_n,
+        }
+    }
+}
+impl Poll for SVInfoPoll {
+    fn class(&self) -> Class {
+        Class::Navigation
+    }
+    fn id(&self) -> u8 {
+        0x30
+    }
+    fn polling_payload(&self) -> Vec<u8> {
+        vec![]
     }
 }
 
@@ -89,11 +151,12 @@ impl Poll for NavStatusPoll {
 
 impl From<&[u8]> for NavStatus {
     fn from(buf: &[u8]) -> NavStatus {
+        let up = u32::from_le_bytes(buf_to_4u8(&buf[12..16])) as u64;
         NavStatus {
             _milli: u32::from_le_bytes(buf_to_4u8(&buf[0..4])),
             fix: NavFix::from(buf[4]),
             _time_to_fix: u32::from_le_bytes(buf_to_4u8(&buf[8..12])),
-            uptime: Duration::from_millis(u32::from_le_bytes(buf_to_4u8(&buf[12..16])) as u64),
+            uptime: Duration::from_millis(up),
         }
     }
 }
