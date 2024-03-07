@@ -2,4 +2,19 @@
 resolver = "2"
 members = [
     "ntp",
+    "ubx",
+    "esp",
 ]
+
+[profile.release]
+opt-level = "s"
+debug = true
+strip = true
+
+[profile.dev]
+debug = true    # Symbols are nice and they don't increase the size on Flash
+opt-level = "z"
+
+[profile.bench]
+debug = true
+
