@@ -1,6 +1,7 @@
 mod clock;
 mod clock_face;
 mod http;
+mod max7219;
 mod metrics;
 mod uart;
 mod wifi;
@@ -32,9 +33,30 @@ fn main() -> std::io::Result<()> {
     let tx = peripherals.pins.gpio15;
     let rx = peripherals.pins.gpio4;
 
-    let gpsserver = Arc::new(Mutex::new(GPSServer::new()));
-    let gpsserver2 = gpsserver.clone();
-    let u = uart::Ublox::new(peripherals.uart1, tx, rx);
+    let sclk = peripherals.pins.gpio25;
+    let scs = peripherals.pins.gpio26;
+    let sdo = peripherals.pins.gpio27;
+    let mut max7219 = max7219::Max7219::new(scs, sclk, sdo);
+    max7219.clear();
+
+    /*
+     * ........
+     * .##..##.
+     * ########
+     * ########
+     * .######.
+     * ..####..
+     * ...##...
+     * ........
+     */
+    max7219.shift_out(1, 0b0011_0000);
+    max7219.shift_out(2, 0b0111_1000);
+    max7219.shift_out(3, 0b0111_1100);
+    max7219.shift_out(4, 0b0011_1110);
+    max7219.shift_out(5, 0b0011_1110);
+    max7219.shift_out(6, 0b0111_1100);
+    max7219.shift_out(7, 0b0111_1000);
+    max7219.shift_out(8, 0b0011_0000);
 
     let _ = u.write(&disable_nmea(9600));
 
