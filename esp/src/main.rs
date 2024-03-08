@@ -1,4 +1,5 @@
 mod clock;
+mod clock_face;
 mod http;
 mod metrics;
 mod uart;
@@ -6,6 +7,7 @@ mod wifi;
 
 use chrono::{DateTime, Utc};
 use esp_idf_hal::prelude::Peripherals;
+use esp_idf_svc::nvs::{EspDefaultNvs, EspDefaultNvsPartition};
 use ntp::proto::*;
 use ntp::server::GPSServer;
 use std::net::UdpSocket;
@@ -40,6 +42,13 @@ fn main() -> std::io::Result<()> {
     let metric_tx2 = metric_tx.clone();
     let metric_tx3 = metric_tx.clone();
 
+    let nvsp = EspDefaultNvsPartition::take().unwrap();
+    let nvs = EspDefaultNvs::new(nvsp.clone(), "name", true).unwrap();
+
+    let c = clock_face::ClockFace::with_nvs(nvs);
+    let clockm = Arc::new(Mutex::new(c));
+    let clockm2 = clockm.clone();
+
     thread::scope(|s| {
         s.spawn(|| {
             poll_ubx(&u);
@@ -60,7 +69,7 @@ fn main() -> std::io::Result<()> {
             }
         });
 
-        let _w = wifi::configure(SSID, PASS, modem).expect("Could not configure wifi");
+        let _w = wifi::configure(SSID, PASS, nvsp, modem).expect("Could not configure wifi");
         println!("Wifi is up");
 
         s.spawn(move || {
@@ -69,10 +78,12 @@ fn main() -> std::io::Result<()> {
         });
 
         println!("Serving metrics");
-        let _h = http::server(metrics2).expect("Could not start up metrics server");
+        let _h = http::server(metrics2, clockm).expect("Could not start up metrics server");
 
         loop {
-            thread::sleep(Duration::from_millis(100));
+            let _now = clockm2.lock().unwrap().now();
+            // update clock
+            thread::sleep(Duration::from_millis(1000));
         }
     })
 }

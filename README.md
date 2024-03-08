@@ -11,7 +11,8 @@ After the initial sync, the leap seconds will be stored in the receiver's RTC me
 This project runs:
 - An UBX parser on the serial data in the GPS
 - A stratum-1 NTP server, on port 123 UDP.
-- An HTTP server for prometheus metrics, port 80, /metrics.
+- An HTTP endpoint for prometheus metrics, port 80, at `/metrics`.
+- An HTTP endpoint which allows changing the timezone, at `/`.
 
 The metrics currently look like
 

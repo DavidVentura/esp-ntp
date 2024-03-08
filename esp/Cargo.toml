@@ -17,15 +17,21 @@ experimental = ["esp-idf-svc/experimental"]
 embassy = ["esp-idf-svc/embassy-sync", "esp-idf-svc/critical-section", "esp-idf-svc/embassy-time-driver"]
 
 [dependencies]
-log = { version = "0.4", default-features = false }
-esp-idf-svc = { version = "0.48", default-features = false }
 ntp = { version = "0.0.0", path = "../ntp" }
 ubx = { version = "0.0.0", path = "../ubx" }
+log = { version = "0.4", default-features = false }
+
+esp-idf-svc = { version = "0.48", default-features = false }
 esp-idf-hal = "0.43.1"
-chrono = { version = "0.4.34", default-features = false }
 esp-idf-sys = "0.34.1"
+
 heapless = "0.8.0"
 libc = "0.2.153"
+
+chrono = { version = "0.4.34", default-features = false }
+chrono-tz = { version = "0.8.6", features = ["filter-by-regex"] }
+serde_urlencoded = "0.7.1"
+serde = { version = "1.0.197", features = ["derive"] }
 
 [build-dependencies]
 embuild = "0.31.3"
