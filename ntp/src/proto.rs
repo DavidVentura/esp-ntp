@@ -3,6 +3,8 @@ use std::{net::Ipv4Addr, time::Duration};
 
 pub const NTP_VERSION: u8 = 3;
 pub const NTP_MESSAGE_LEN: usize = 48;
+pub const NTP_STRATUM_ONE: u8 = 1;
+pub const NTP_STRATUM_UNSYNCHRONIZED: u8 = 16;
 
 #[derive(PartialEq, Debug)]
 pub struct Fix32 {

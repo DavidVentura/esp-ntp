@@ -7,21 +7,21 @@ pub trait Serialize {
     fn serialize(&self) -> Vec<u8>;
 }
 pub trait Poll {
-    fn class(&self) -> Class;
-    fn id(&self) -> u8;
-    fn polling_payload(&self) -> Vec<u8>;
+    fn class() -> Class;
+    fn id() -> u8;
+    fn polling_payload() -> Vec<u8>;
 }
 
 pub trait Frame {
-    fn frame(&self) -> Vec<u8>;
+    fn frame() -> Vec<u8>;
 }
 
 impl<T: Poll> Frame for T {
-    fn frame(&self) -> Vec<u8> {
+    fn frame() -> Vec<u8> {
         Packet {
-            class: self.class().into(),
-            id: self.id(),
-            payload: self.polling_payload(),
+            class: Self::class().into(),
+            id: Self::id(),
+            payload: Self::polling_payload(),
         }
         .serialize()
     }

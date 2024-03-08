@@ -22,14 +22,15 @@ impl From<Packet> for NavPacket {
     }
 }
 
-impl TimeGPS {
-    pub fn serialize_request() -> Vec<u8> {
-        let p = Packet {
-            class: Class::Navigation,
-            id: 0x20,
-            payload: vec![],
-        };
-        p.serialize()
+impl Poll for TimeGPS {
+    fn class() -> Class {
+        Class::Navigation
+    }
+    fn id() -> u8 {
+        0x20
+    }
+    fn polling_payload() -> Vec<u8> {
+        vec![]
     }
 }
 
@@ -90,13 +91,13 @@ impl From<&[u8]> for SVInfo {
     }
 }
 impl Poll for SVInfoPoll {
-    fn class(&self) -> Class {
+    fn class() -> Class {
         Class::Navigation
     }
-    fn id(&self) -> u8 {
+    fn id() -> u8 {
         0x30
     }
-    fn polling_payload(&self) -> Vec<u8> {
+    fn polling_payload() -> Vec<u8> {
         vec![]
     }
 }
@@ -146,13 +147,13 @@ pub struct NavStatus {
 #[derive(Debug)]
 pub struct NavStatusPoll {}
 impl Poll for NavStatusPoll {
-    fn class(&self) -> Class {
+    fn class() -> Class {
         Class::Navigation
     }
-    fn id(&self) -> u8 {
+    fn id() -> u8 {
         0x03
     }
-    fn polling_payload(&self) -> Vec<u8> {
+    fn polling_payload() -> Vec<u8> {
         vec![]
     }
 }

@@ -5,9 +5,14 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+#bin = ["dep:chrono"]
+default = ["dep:chrono"]
+bin = ["dep:chrono_bin"]
+
 [dependencies]
-# clock is only for bin
-chrono = { version = "0.4.34", default-features = false, features = ["clock"] }
+chrono = { version = "0.4.34", default-features = false, optional = true}
+chrono_bin = { package = "chrono", version = "0.4.34", default-features = false, features = ["clock"], optional = true}
 
 [lib]
 name = "ntp"

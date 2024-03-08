@@ -32,7 +32,7 @@ fn main() {
     port.write_all(&disable_nmea(9600)).unwrap();
     port.write(&buf).unwrap();
 
-    let buf = TimeGPS::serialize_request();
+    let buf = TimeGPS::frame();
     let m_srv = Arc::new(Mutex::new(GPSServer::new()));
     let m_srv2 = m_srv.clone();
     std::thread::scope(|s| {
@@ -54,6 +54,7 @@ fn main() {
                             m_srv2.lock().unwrap().update_reference_time(dt.unwrap());
                         }
                     }
+                    NavPacket::SVInfo(t) => {}
                     NavPacket::TimeUTC(t) => {}
                     NavPacket::Status(s) => {}
                 },

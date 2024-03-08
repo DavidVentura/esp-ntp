@@ -78,9 +78,9 @@ fn main() -> std::io::Result<()> {
 }
 
 fn poll_ubx(u: &uart::Ublox<'_>) {
-    let buf = TimeGPS::serialize_request();
-    let buf2 = (NavStatusPoll {}).frame();
-    let buf3 = (SVInfoPoll {}).frame();
+    let buf = TimeGPS::frame();
+    let buf2 = NavStatusPoll::frame();
+    let buf3 = SVInfoPoll::frame();
     loop {
         let _ = u.write(&buf);
         thread::sleep(Duration::from_secs(1));
