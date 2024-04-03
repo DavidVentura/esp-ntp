@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 #[derive(Deserialize, Debug)]
 struct Form {
     timezone: String,
+    brightness: u8,
 }
 
 fn index<T: Connection>(resp: &mut Response<T>, c: Arc<Mutex<ClockFace>>) -> Result<(), EspIOError>
@@ -17,12 +18,32 @@ where
 {
     let cf = c.lock().unwrap();
     let tz = cf.current_tz();
-    resp.write(format!("current time is {}, timezone is {}, avail=", cf.now(), tz).as_bytes())?;
+    let curbr = cf.get_brightness();
+    let avail_tz = cf.avail_tz().to_vec();
+    let now = cf.now();
+    drop(cf);
+
+    resp.write(format!("current time is {}, timezone is {}, avail=", now, tz).as_bytes())?;
     resp.write(b"<form method=post>")?;
     resp.write(b"<select name='timezone'>")?;
-    for ln in cf.avail_tz() {
-        resp.write(b"<option>")?;
+    for ln in avail_tz {
+        if ln == tz {
+            resp.write(b"<option selected>")?;
+        } else {
+            resp.write(b"<option>")?;
+        }
         resp.write(ln.to_string().as_bytes())?;
+        resp.write(b"</option>")?;
+    }
+    resp.write(b"</select>")?;
+    resp.write(b"<select name='brightness'>")?;
+    for br in 0..16 {
+        if br == curbr {
+            resp.write(b"<option selected>")?;
+        } else {
+            resp.write(b"<option>")?;
+        }
+        resp.write(br.to_string().as_bytes())?;
         resp.write(b"</option>")?;
     }
     resp.write(b"</select>")?;
@@ -45,8 +66,13 @@ pub(crate) fn server(
             .unwrap()
             .trim_end_matches(char::from(0));
         let f: Form = serde_urlencoded::from_str::<Form>(&str_repr).unwrap();
-        println!("Updating timezone to {:?}", f);
-        c1.lock().unwrap().set_tz(&f.timezone);
+        println!("Updating settings to {f:?}");
+
+        {
+            let mut clock = c1.lock().unwrap();
+            clock.set_tz(&f.timezone);
+            clock.set_brightness(f.brightness);
+        }
 
         let mut resp = req.into_response(200, None, &[("content-type", "text/html")])?;
         index(&mut resp, c1.clone())

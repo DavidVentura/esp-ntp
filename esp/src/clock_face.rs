@@ -5,15 +5,21 @@ use esp_idf_svc::nvs::EspDefaultNvs;
 
 pub struct ClockFace {
     tz: Tz,
+    brightness: u8,
     nvs: Option<EspDefaultNvs>,
 }
 
 impl ClockFace {
     const TZ_KEY: &'static str = "clock_tz";
+    const BR_KEY: &'static str = "brightness";
 
     pub fn new(tz_name: &str) -> ClockFace {
         let tz: Tz = tz_name.parse().unwrap();
-        ClockFace { tz, nvs: None }
+        ClockFace {
+            tz,
+            nvs: None,
+            brightness: 2,
+        }
     }
 
     pub fn with_nvs(nvs: EspDefaultNvs) -> ClockFace {
@@ -44,7 +50,11 @@ impl ClockFace {
             }
         };
 
-        ClockFace { tz, nvs: Some(nvs) }
+        ClockFace {
+            tz,
+            nvs: Some(nvs),
+            brightness: 2,
+        }
     }
 
     pub fn current_tz(&self) -> Tz {
@@ -56,7 +66,7 @@ impl ClockFace {
         match &mut self.nvs {
             Some(n) => {
                 let res = n.set_str(Self::TZ_KEY, tz_name);
-                println!("Storing {tz_name} res = {:?}", res);
+                println!("Storing TZ {tz_name} res = {:?}", res);
             }
             None => (),
         }
@@ -67,5 +77,19 @@ impl ClockFace {
 
     pub fn now(&self) -> DateTime<Tz> {
         clock::now().with_timezone(&self.tz)
+    }
+
+    pub fn get_brightness(&self) -> u8 {
+        2
+    }
+    pub fn set_brightness(&mut self, br: u8) {
+        self.brightness = br.min(15).max(0);
+        match &mut self.nvs {
+            Some(n) => {
+                let res = n.set_u8(Self::BR_KEY, self.brightness);
+                println!("Storing brightness={}, res = {:?}", self.brightness, res);
+            }
+            None => (),
+        }
     }
 }
