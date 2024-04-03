@@ -86,7 +86,8 @@ where
 
     pub fn render(&mut self, data: &str) {
         // each char is half-width, so they have to be tacked together
-        assert!(data.len() <= self.display_count * 2);
+        //assert!(data.len() <= self.display_count * 2);
+        let data = &data[0..std::cmp::min(data.len(), self.display_count * 2)];
 
         let mut glyphs = vec![]; // 8 = rows
         for c in data.chars().rev() {
