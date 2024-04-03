@@ -15,6 +15,12 @@ enum Command {
     DisplayTest,
 }
 
+enum Glyph {
+    Thinner([[u8; 1]; 8]),
+    Thin([[u8; 2]; 8]),
+    Thick([[u8; 4]; 8]),
+}
+
 impl From<Command> for u8 {
     fn from(c: Command) -> u8 {
         match c {
@@ -63,11 +69,24 @@ where
             self.shift_out(j, &vec![0b000000000; self.display_count]);
         }
     }
+
+    fn shift_out_b(&mut self, hb: u8, lb: &[u8]) {
+        let mut agg = Vec::with_capacity(lb.len() / 8);
+        for bits in lb.chunks(8) {
+            // aggregate bits-as-byte into a real byte
+            let mut byte: u8 = 0;
+            for (i, bit) in bits.iter().enumerate() {
+                byte |= bit << i;
+            }
+            agg.push(byte);
+        }
+        self.shift_out(hb, &agg)
+    }
+
     pub fn shift_out(&mut self, hb: u8, lb: &[u8]) {
         self.scs.set_low().unwrap();
-        let data = lb.to_vec();
 
-        for lb in data.iter().rev() {
+        for lb in lb.iter().rev() {
             let item: u16 = ((hb as u16) << 8) | *lb as u16;
             for i in 0..16 {
                 self.sclk.set_low().unwrap();
@@ -85,162 +104,163 @@ where
     }
 
     pub fn render(&mut self, data: &str) {
-        // each char is half-width, so they have to be tacked together
-        //assert!(data.len() <= self.display_count * 2);
-        let data = &data[0..std::cmp::min(data.len(), self.display_count * 2)];
+        // TODO maybe alloc once?
+        let mut rowdata: Vec<Vec<u8>> = vec![vec![]; 8]; // 64 width
 
-        let mut glyphs = vec![]; // 8 = rows
-        for c in data.chars().rev() {
-            let f = self.font(c);
-            glyphs.push(f);
-        }
-
-        let mut concat_glyphs = vec![];
+        let glyphs: Vec<Glyph> = data.chars().rev().map(|c| self.font(c)).collect();
         for pair in glyphs.chunks(2) {
-            let mut concat_ = vec![]; // 8 = rows 2 glyps, 8x8
             for row in 0..8 {
-                let v = if pair.len() == 2 {
-                    (pair[0][row]) | (pair[1][row] << 4)
-                } else {
-                    pair[0][row]
-                };
-                concat_.push(v);
+                for (i, digit) in pair.iter().enumerate() {
+                    match digit {
+                        Glyph::Thinner(bits) => rowdata[row].extend(bits[row].iter().rev()),
+                        Glyph::Thin(bits) => rowdata[row].extend(bits[row].iter().rev()),
+                        Glyph::Thick(bits) => rowdata[row].extend(bits[row].iter().rev()),
+                    }
+                }
             }
-            concat_glyphs.push(concat_);
         }
+        // 01:00:54.6476399000
         for rowidx in 0..8 {
-            let mut rowdata = vec![];
-            for g in concat_glyphs.iter() {
-                rowdata.push(g[rowidx]);
-            }
-            self.shift_out(1 + rowidx as u8, &rowdata);
+            let d = &rowdata[rowidx];
+            // this clamps _from the end_, we need to push the least-significant-symbol first
+            let rd = &d[0..std::cmp::min(d.len(), self.display_count * 8)];
+            self.shift_out_b(1 + rowidx as u8, rd);
         }
     }
 
-    #[rustfmt::skip]
-    fn font(&self, c: char) -> [u8; 8] {
+    fn font(&self, c: char) -> Glyph {
         match c {
-            '1' => [
-                0b0000,
-                0b0001,
-                0b0011,
-                0b0001,
-                0b0001,
-                0b0001,
-                0b0000,
-                0b0000,
-
-            ],
-            '2' => [
-                0b0000,
-                0b0111,
-                0b0001,
-                0b0111,
-                0b0100,
-                0b0111,
-                0b0000,
-                0b0000,
-            ],
-            '3' => [
-                0b0000,
-                0b0111,
-                0b0001,
-                0b0111,
-                0b0001,
-                0b0111,
-                0b0000,
-                0b0000,
-            ],
-            '4' => [
-                0b0000,
-                0b0101,
-                0b0101,
-                0b0111,
-                0b0001,
-                0b0001,
-                0b0000,
-                0b0000,
-            ],
-            '5' => [
-                0b0000,
-                0b0111,
-                0b0100,
-                0b0111,
-                0b0001,
-                0b0111,
-                0b0000,
-                0b0000,
-            ],
-            '6' => [
-                0b0000,
-                0b0111,
-                0b0100,
-                0b0111,
-                0b0101,
-                0b0111,
-                0b0000,
-                0b0000,
-            ],
-            '7' => [
-                0b0000,
-                0b0111,
-                0b0001,
-                0b0001,
-                0b0001,
-                0b0001,
-                0b0000,
-                0b0000,
-            ],
-            '8' => [
-                0b0000,
-                0b0111,
-                0b0101,
-                0b0111,
-                0b0101,
-                0b0111,
-                0b0000,
-                0b0000,
-            ],
-            '9' => [
-                0b0000,
-                0b0111,
-                0b0101,
-                0b0111,
-                0b0001,
-                0b0001,
-                0b0000,
-                0b0000,
-            ],
-            '0' => [
-                0b0000,
-                0b0111,
-                0b0101,
-                0b0101,
-                0b0101,
-                0b0111,
-                0b0000,
-                0b0000,
-            ],
-            ':' => [
-                0b0000,
-                0b0000,
-                0b0000,
-                0b0110,
-                0b0000,
-                0b0110,
-                0b0000,
-                0b0000,
-            ],
-            ' ' => [
-                0b0000,
-                0b0000,
-                0b0000,
-                0b0000,
-                0b0000,
-                0b0000,
-                0b0000,
-                0b0000,
-            ],
+            '1' => Glyph::Thick([
+                [0, 0, 0, 0],
+                [0, 0, 1, 0],
+                [0, 1, 1, 0],
+                [0, 0, 1, 0],
+                [0, 0, 1, 0],
+                [0, 1, 1, 1],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+            ]),
+            '2' => Glyph::Thick([
+                [0, 0, 0, 0],
+                [0, 1, 1, 1],
+                [0, 0, 0, 1],
+                [0, 1, 1, 1],
+                [0, 1, 0, 0],
+                [0, 1, 1, 1],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+            ]),
+            '3' => Glyph::Thick([
+                [0, 0, 0, 0],
+                [0, 1, 1, 1],
+                [0, 0, 0, 1],
+                [0, 1, 1, 1],
+                [0, 0, 0, 1],
+                [0, 1, 1, 1],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+            ]),
+            '4' => Glyph::Thick([
+                [0, 0, 0, 0],
+                [0, 1, 0, 1],
+                [0, 1, 0, 1],
+                [0, 1, 1, 1],
+                [0, 0, 0, 1],
+                [0, 0, 0, 1],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+            ]),
+            '5' => Glyph::Thick([
+                [0, 0, 0, 0],
+                [0, 1, 1, 1],
+                [0, 1, 0, 0],
+                [0, 1, 1, 1],
+                [0, 0, 0, 1],
+                [0, 1, 1, 1],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+            ]),
+            '6' => Glyph::Thick([
+                [0, 0, 0, 0],
+                [0, 1, 1, 1],
+                [0, 1, 0, 0],
+                [0, 1, 1, 1],
+                [0, 1, 0, 1],
+                [0, 1, 1, 1],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+            ]),
+            '7' => Glyph::Thick([
+                [0, 0, 0, 0],
+                [0, 1, 1, 1],
+                [0, 0, 0, 1],
+                [0, 0, 0, 1],
+                [0, 0, 0, 1],
+                [0, 0, 0, 1],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+            ]),
+            '8' => Glyph::Thick([
+                [0, 0, 0, 0],
+                [0, 1, 1, 1],
+                [0, 1, 0, 1],
+                [0, 1, 1, 1],
+                [0, 1, 0, 1],
+                [0, 1, 1, 1],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+            ]),
+            '9' => Glyph::Thick([
+                [0, 0, 0, 0],
+                [0, 1, 1, 1],
+                [0, 1, 0, 1],
+                [0, 1, 1, 1],
+                [0, 0, 0, 1],
+                [0, 0, 0, 1],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+            ]),
+            '0' => Glyph::Thick([
+                [0, 0, 0, 0],
+                [0, 1, 1, 1],
+                [0, 1, 0, 1],
+                [0, 1, 0, 1],
+                [0, 1, 0, 1],
+                [0, 1, 1, 1],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+            ]),
+            ':' => Glyph::Thin([
+                [0, 0],
+                [0, 0],
+                [0, 1],
+                [0, 0],
+                [0, 1],
+                [0, 0],
+                [0, 0],
+                [0, 0],
+            ]),
+            '.' => Glyph::Thin([
+                [0, 0],
+                [0, 0],
+                [0, 0],
+                [0, 0],
+                [0, 0],
+                [0, 1],
+                [0, 0],
+                [0, 0],
+            ]),
+            ' ' => Glyph::Thin([
+                [0, 0],
+                [0, 0],
+                [0, 0],
+                [0, 0],
+                [0, 0],
+                [0, 0],
+                [0, 0],
+                [0, 0],
+            ]),
+            '!' => Glyph::Thinner([[0], [0], [0], [0], [0], [0], [0], [0]]),
             other => panic!("Unhandled {other}"),
         }
     }
