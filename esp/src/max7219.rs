@@ -110,7 +110,7 @@ where
         let glyphs: Vec<Glyph> = data.chars().rev().map(|c| self.font(c)).collect();
         for pair in glyphs.chunks(2) {
             for row in 0..8 {
-                for (i, digit) in pair.iter().enumerate() {
+                for digit in pair.iter() {
                     match digit {
                         Glyph::Thinner(bits) => rowdata[row].extend(bits[row].iter().rev()),
                         Glyph::Thin(bits) => rowdata[row].extend(bits[row].iter().rev()),
