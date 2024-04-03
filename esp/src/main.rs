@@ -36,8 +36,9 @@ fn main() -> std::io::Result<()> {
     let sclk = peripherals.pins.gpio25;
     let scs = peripherals.pins.gpio26;
     let sdo = peripherals.pins.gpio27;
-    let mut max7219 = max7219::Max7219::new(scs, sclk, sdo);
+    let mut max7219 = max7219::Max7219::new(scs, sclk, sdo, 8);
     max7219.clear();
+    max7219.set_intensity(2);
 
     /*
      * ........
@@ -49,14 +50,20 @@ fn main() -> std::io::Result<()> {
      * ...##...
      * ........
      */
-    max7219.shift_out(1, 0b0011_0000);
-    max7219.shift_out(2, 0b0111_1000);
-    max7219.shift_out(3, 0b0111_1100);
-    max7219.shift_out(4, 0b0011_1110);
-    max7219.shift_out(5, 0b0011_1110);
-    max7219.shift_out(6, 0b0111_1100);
-    max7219.shift_out(7, 0b0111_1000);
-    max7219.shift_out(8, 0b0011_0000);
+    /*
+    max7219.shift_out(1, &[0b0011_0000, 0b0000_1111, 0b1111_0000, 0b1010_0101]);
+    max7219.shift_out(2, &[0b0111_1000, 0b0000_1111, 0b1111_0000, 0b1010_0101]);
+    max7219.shift_out(3, &[0b0111_1100, 0b0000_1111, 0b1111_0000, 0b1010_0101]);
+    max7219.shift_out(4, &[0b0011_1110, 0b0000_1111, 0b1111_0000, 0b1010_0101]);
+    max7219.shift_out(5, &[0b0011_1110, 0b0000_1111, 0b1111_0000, 0b1010_0101]);
+    max7219.shift_out(6, &[0b0111_1100, 0b0000_1111, 0b1111_0000, 0b1010_0101]);
+    max7219.shift_out(7, &[0b0111_1000, 0b0000_1111, 0b1111_0000, 0b1010_0101]);
+    max7219.shift_out(8, &[0b0011_0000, 0b0000_1111, 0b1111_0000, 0b1010_0101]);
+    */
+    max7219.render("1234567890123456");
+    let gpsserver = Arc::new(Mutex::new(GPSServer::new()));
+    let gpsserver2 = gpsserver.clone();
+    let u = uart::Ublox::new(peripherals.uart1, tx, rx);
 
     let _ = u.write(&disable_nmea(9600));
 
@@ -103,9 +110,13 @@ fn main() -> std::io::Result<()> {
         let _h = http::server(metrics2, clockm).expect("Could not start up metrics server");
 
         loop {
-            let _now = clockm2.lock().unwrap().now();
+            let now = clockm2.lock().unwrap().now();
+            let t = now.time();
+            // TODO add dot back
+            let tstr = t.format("%H:%M:%S.6%f").to_string(); // only 3/6/9 are allowed: https://github.com/chronotope/chrono/issues/956
+            max7219.render(&tstr[0..tstr.len()]);
             // update clock
-            thread::sleep(Duration::from_millis(1000));
+            thread::sleep(Duration::from_millis(1));
         }
     })
 }

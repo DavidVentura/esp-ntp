@@ -8,10 +8,10 @@ use esp_idf_svc::wifi::{BlockingWifi, EspWifi};
 use esp_idf_svc::wifi::{ClientConfiguration, Configuration};
 use esp_idf_sys::EspError;
 
+/// The nvs stores the RF calibration data, which allows for faster connection
 pub(crate) fn configure(
     ssid: &str,
     pass: &str,
-    /// The nvs stores the RF calibration data, which allows for faster connection
     nvs: EspNvsPartition<NvsDefault>,
     modem: Modem,
 ) -> Result<BlockingWifi<EspWifi<'static>>, EspError> {
