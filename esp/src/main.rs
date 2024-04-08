@@ -112,10 +112,9 @@ fn main() -> std::io::Result<()> {
         loop {
             let now = clockm2.lock().unwrap().now();
             let t = now.time();
-            // TODO add dot back
-            let tstr = t.format("%H:%M:%S.6%f").to_string(); // only 3/6/9 are allowed: https://github.com/chronotope/chrono/issues/956
-            max7219.render(&tstr[0..tstr.len()]);
-            // update clock
+            // only 3/6/9 are allowed for %f: https://github.com/chronotope/chrono/issues/956
+            let tstr = t.format("%H:%M:%S.%6f  !").to_string();
+            max7219.render(&tstr);
             thread::sleep(Duration::from_millis(1));
         }
     })
