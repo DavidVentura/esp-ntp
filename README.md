@@ -3,6 +3,12 @@ This project is a from-scratch, stratum-1 NTP server, which gets its time from a
 
 It runs on an ESP32, and can be run on PC to test/debug.
 
+Looks like this:
+
+
+https://github.com/DavidVentura/esp-ntp/assets/3650670/66aeae92-4bf2-4964-9473-72abf8268c6b
+
+
 
 There's no consideration for the initial leap seconds stored on the GPS receiver, that means that for the first 12.5 minutes of usage, the leap seconds will be off -- in my case, by 3 seconds. This will depend on how old your receiver's firmware is; 3 seconds puts my firmware [before 2012](https://en.wikipedia.org/wiki/Leap_second).
 
